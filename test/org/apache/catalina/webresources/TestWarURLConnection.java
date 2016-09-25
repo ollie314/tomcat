@@ -38,7 +38,7 @@ public class TestWarURLConnection {
         String fileUrl = f.toURI().toURL().toString();
 
         URL indexHtmlUrl = new URL("jar:war:" + fileUrl +
-                "^/WEB-INF/lib/test.jar!/META-INF/resources/index.html");
+                "*/WEB-INF/lib/test.jar!/META-INF/resources/index.html");
 
         URLConnection urlConn = indexHtmlUrl.openConnection();
         urlConn.connect();

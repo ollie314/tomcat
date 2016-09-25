@@ -59,8 +59,7 @@ import org.apache.tomcat.websocket.pojo.PojoMessageHandlerWholeText;
  */
 public class Util {
 
-    private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
+    private static final StringManager sm = StringManager.getManager(Util.class);
     private static final Queue<SecureRandom> randoms =
             new ConcurrentLinkedQueue<>();
 
@@ -86,7 +85,7 @@ public class Util {
 
     static CloseCode getCloseCode(int code) {
         if (code > 2999 && code < 5000) {
-            return CloseCodes.NORMAL_CLOSURE;
+            return CloseCodes.getCloseCode(code);
         }
         switch (code) {
             case 1000:
@@ -208,6 +207,10 @@ public class Util {
         @SuppressWarnings("unchecked")
         Class<? extends T> superClazz =
                 (Class<? extends T>) clazz.getSuperclass();
+        if (superClazz == null) {
+            // Finished looking up the class hierarchy without finding anything
+            return null;
+        }
 
         TypeResult superClassTypeResult = getGenericType(type, superClazz);
         int dimension = superClassTypeResult.getDimension();
@@ -328,7 +331,7 @@ public class Util {
 
 
     public static List<DecoderEntry> getDecoders(
-            Class<? extends Decoder>[] decoderClazzes)
+            List<Class<? extends Decoder>> decoderClazzes)
                     throws DeploymentException{
 
         List<DecoderEntry> result = new ArrayList<>();
@@ -461,9 +464,7 @@ public class Util {
         try {
             List<Class<? extends Decoder>> decoders =
                     endpointConfig.getDecoders();
-            @SuppressWarnings("unchecked")
-            List<DecoderEntry> decoderEntries = getDecoders(
-                    decoders.toArray(new Class[decoders.size()]));
+            List<DecoderEntry> decoderEntries = getDecoders(decoders);
             decoderMatch = new DecoderMatch(target, decoderEntries);
         } catch (DeploymentException e) {
             throw new IllegalArgumentException(e);

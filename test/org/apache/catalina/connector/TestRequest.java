@@ -52,6 +52,7 @@ import org.apache.catalina.startup.SimpleHttpClient;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.tomcat.unittest.TesterRequest;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.descriptor.web.FilterMap;
@@ -69,7 +70,7 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     /**
-     * Test case for https://issues.apache.org/bugzilla/show_bug.cgi?id=37794
+     * Test case for https://bz.apache.org/bugzilla/show_bug.cgi?id=37794
      * POST parameters are not returned from a call to
      * any of the {@link HttpServletRequest} getParameterXXX() methods if the
      * request is chunked.
@@ -83,19 +84,18 @@ public class TestRequest extends TomcatBaseTest {
         assertTrue(client.isResponse200());
         assertTrue(client.isResponseBodyOK());
         client.reset();
-        client.doRequest(0, false); // Unlimited
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        client.doRequest(0, false); // 0 bytes - too small should fail
+        assertTrue(client.isResponse413());
         client.reset();
         client.doRequest(1, false); // 1 byte - too small should fail
-        assertTrue(client.isResponse400());
+        assertTrue(client.isResponse413());
 
         client.reset();
 
         // Edge cases around actual content length
         client.reset();
         client.doRequest(6, false); // Too small should fail
-        assertTrue(client.isResponse400());
+        assertTrue(client.isResponse413());
         client.reset();
         client.doRequest(7, false); // Just enough should pass
         assertTrue(client.isResponse200());
@@ -177,7 +177,7 @@ public class TestRequest extends TomcatBaseTest {
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
             Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-            root.addServletMapping("/test", "Bug37794");
+            root.addServletMappingDecoded("/test", "Bug37794");
 
             if (createFilter) {
                 FilterDef failedRequestFilter = new FilterDef();
@@ -186,7 +186,7 @@ public class TestRequest extends TomcatBaseTest {
                         FailedRequestFilter.class.getName());
                 FilterMap failedRequestFilterMap = new FilterMap();
                 failedRequestFilterMap.setFilterName("failedRequestFilter");
-                failedRequestFilterMap.addURLPattern("/*");
+                failedRequestFilterMap.addURLPatternDecoded("/*");
                 root.addFilterDef(failedRequestFilter);
                 root.addFilterMap(failedRequestFilterMap);
             }
@@ -264,7 +264,7 @@ public class TestRequest extends TomcatBaseTest {
 
     /*
      * Test case for
-     * <a href="https://issues.apache.org/bugzilla/show_bug.cgi?id=38113">bug
+     * <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=38113">bug
      * 38118</a>.
      */
     @Test
@@ -277,7 +277,7 @@ public class TestRequest extends TomcatBaseTest {
 
         // Add the Servlet
         Tomcat.addServlet(ctx, "servlet", new EchoQueryStringServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -325,7 +325,7 @@ public class TestRequest extends TomcatBaseTest {
         ctx.getPipeline().addValve(new BasicAuthenticator());
 
         Tomcat.addServlet(ctx, "servlet", new LoginLogoutServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         TesterMapRealm realm = new TesterMapRealm();
         realm.addUser(LoginLogoutServlet.USER, LoginLogoutServlet.PWD);
@@ -372,7 +372,7 @@ public class TestRequest extends TomcatBaseTest {
         Context root = tomcat.addContext("",
                 System.getProperty("java.io.tmpdir"));
         Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-        root.addServletMapping("/", "Bug37794");
+        root.addServletMappingDecoded("/", "Bug37794");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort() + "/");
@@ -386,7 +386,7 @@ public class TestRequest extends TomcatBaseTest {
         Context root = tomcat.addContext("",
                 System.getProperty("java.io.tmpdir"));
         Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-        root.addServletMapping("/", "Bug37794");
+        root.addServletMappingDecoded("/", "Bug37794");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort() + "/");
@@ -396,7 +396,7 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     /**
-     * Test case for https://issues.apache.org/bugzilla/show_bug.cgi?id=48692
+     * Test case for https://bz.apache.org/bugzilla/show_bug.cgi?id=48692
      * PUT requests should be able to fetch request parameters coming from
      * the request body (when properly configured using the new parseBodyMethod
      * setting).
@@ -479,7 +479,7 @@ public class TestRequest extends TomcatBaseTest {
                 System.getProperty("java.io.tmpdir"));
         root.setAllowCasualMultipartParsing(true);
         Tomcat.addServlet(root, "Bug54984", new Bug54984Servlet());
-        root.addServletMapping("/", "Bug54984");
+        root.addServletMappingDecoded("/", "Bug54984");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort()
@@ -556,7 +556,7 @@ public class TestRequest extends TomcatBaseTest {
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
             Tomcat.addServlet(root, "EchoParameters", new EchoParametersServlet());
-            root.addServletMapping("/echo", "EchoParameters");
+            root.addServletMappingDecoded("/echo", "EchoParameters");
             tomcat.start();
 
             setPort(tomcat.getConnector().getLocalPort());
@@ -770,6 +770,26 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     @Test
+    public void testBug56501p() throws Exception {
+        doBug56501("/path/abc", "/path;a=b/abc/xxx", "/path;a=b/abc");
+    }
+
+    @Test
+    public void testBug56501q() throws Exception {
+        doBug56501("/path/abc", "/path/abc;a=b/xxx", "/path/abc;a=b");
+    }
+
+    @Test
+    public void testBug56501r() throws Exception {
+        doBug56501("/path/abc", "/path/abc/xxx;a=b", "/path/abc");
+    }
+
+    @Test
+    public void testBug56501s() throws Exception {
+        doBug56501("/path/abc", "/.;a=b/path/abc/xxx", "/.;a=b/path/abc");
+    }
+
+    @Test
     public void testBug57215a() throws Exception {
         doBug56501("/path", "//path", "//path");
     }
@@ -809,7 +829,7 @@ public class TestRequest extends TomcatBaseTest {
         Context ctx = tomcat.addContext(deployPath, null);
 
         Tomcat.addServlet(ctx, "servlet", new Bug56501Servelet());
-        ctx.addServletMapping("/*", "servlet");
+        ctx.addServletMappingDecoded("/*", "servlet");
 
         tomcat.start();
 

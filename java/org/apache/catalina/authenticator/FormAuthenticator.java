@@ -38,7 +38,6 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
 import org.apache.tomcat.util.http.MimeHeaders;
@@ -116,7 +115,7 @@ public class FormAuthenticator
     }
 
 
-    // --------------------------------------------------------- Public Methods
+    // ------------------------------------------------------ Protected Methods
 
 
     /**
@@ -131,43 +130,16 @@ public class FormAuthenticator
      * @exception IOException if an input/output error occurs
      */
     @Override
-    public boolean authenticate(Request request, HttpServletResponse response)
+    protected boolean doAuthenticate(Request request, HttpServletResponse response)
             throws IOException {
 
-        // References to objects we will need later
-        Session session = null;
-
-        // Have we already authenticated someone?
-        Principal principal = request.getUserPrincipal();
-        String ssoId = (String) request.getNote(Constants.REQ_SSOID_NOTE);
-        if (principal != null) {
-            if (log.isDebugEnabled()) {
-                log.debug("Already authenticated '" +
-                    principal.getName() + "'");
-            }
-            // Associate the session with any existing SSO session
-            if (ssoId != null) {
-                associate(ssoId, request.getSessionInternal(true));
-            }
+        if (checkForCachedAuthentication(request, response, true)) {
             return true;
         }
 
-        // Is there an SSO session against which we can try to reauthenticate?
-        if (ssoId != null) {
-            if (log.isDebugEnabled()) {
-                log.debug("SSO Id " + ssoId + " set; attempting " +
-                          "reauthentication");
-            }
-            // Try to reauthenticate using data cached by SSO.  If this fails,
-            // either the original SSO logon was of DIGEST or SSL (which
-            // we can't reauthenticate ourselves because there is no
-            // cached username and password), or the realm denied
-            // the user's reauthentication for some reason.
-            // In either case we have to prompt the user for a logon */
-            if (reauthenticateFromSSO(ssoId, request)) {
-                return true;
-            }
-        }
+        // References to objects we will need later
+        Session session = null;
+        Principal principal = null;
 
         // Have we authenticated this user before but have caching disabled?
         if (!cache) {
@@ -235,9 +207,6 @@ public class FormAuthenticator
         }
 
         // Acquire references to objects we will need to evaluate
-        MessageBytes uriMB = MessageBytes.newInstance();
-        CharChunk uriCC = uriMB.getCharChunk();
-        uriCC.setLimit(-1);
         String contextPath = request.getContextPath();
         String requestURI = request.getDecodedRequestURI();
 
@@ -250,6 +219,20 @@ public class FormAuthenticator
 
         // No -- Save this request and redirect to the form login page
         if (!loginAction) {
+            // If this request was to the root of the context without a trailing
+            // '/', need to redirect to add it else the submit of the login form
+            // may not go to the correct web application
+            if (request.getServletPath().length() == 0 && request.getPathInfo() == null) {
+                StringBuilder location = new StringBuilder(requestURI);
+                location.append('/');
+                if (request.getQueryString() != null) {
+                    location.append('?');
+                    location.append(request.getQueryString());
+                }
+                response.sendRedirect(response.encodeRedirectURL(location.toString()));
+                return false;
+            }
+
             session = request.getSessionInternal(true);
             if (log.isDebugEnabled()) {
                 log.debug("Save request in session '" + session.getIdInternal() + "'");
@@ -361,12 +344,40 @@ public class FormAuthenticator
 
 
     @Override
-    protected String getAuthMethod() {
-        return HttpServletRequest.FORM_AUTH;
+    protected boolean isContinuationRequired(Request request) {
+        // Special handling for form-based logins to deal with the case
+        // where the login form (and therefore the "j_security_check" URI
+        // to which it submits) might be outside the secured area
+        String contextPath = this.context.getPath();
+        String decodedRequestURI = request.getDecodedRequestURI();
+        if (decodedRequestURI.startsWith(contextPath) &&
+                decodedRequestURI.endsWith(Constants.FORM_ACTION)) {
+            return true;
+        }
+
+        // Special handling for form-based logins to deal with the case where
+        // a resource is protected for some HTTP methods but not protected for
+        // GET which is used after authentication when redirecting to the
+        // protected resource.
+        // TODO: This is similar to the FormAuthenticator.matchRequest() logic
+        // Is there a way to remove the duplication?
+        Session session = request.getSessionInternal(false);
+        if (session != null) {
+            SavedRequest savedRequest = (SavedRequest) session.getNote(Constants.FORM_REQUEST_NOTE);
+            if (savedRequest != null &&
+                    decodedRequestURI.equals(savedRequest.getDecodedRequestURI())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 
-    // ------------------------------------------------------ Protected Methods
+    @Override
+    protected String getAuthMethod() {
+        return HttpServletRequest.FORM_AUTH;
+    }
 
 
     /**
@@ -483,6 +494,7 @@ public class FormAuthenticator
      * we signaled after successful authentication?
      *
      * @param request The request to be verified
+     * @return <code>true</code> if the requests matched the saved one
      */
     protected boolean matchRequest(Request request) {
         // Has a session been created?
@@ -520,6 +532,8 @@ public class FormAuthenticator
      *
      * @param request The request to be restored
      * @param session The session containing the saved information
+     * @return <code>true</code> if the request was successfully restored
+     * @throws IOException if an IO error occurred during the process
      */
     protected boolean restoreRequest(Request request, Session session)
             throws IOException {
@@ -610,7 +624,7 @@ public class FormAuthenticator
      *
      * @param request The request to be saved
      * @param session The session to contain the saved information
-     * @throws IOException
+     * @throws IOException if an IO error occurred during the process
      */
     protected void saveRequest(Request request, Session session)
         throws IOException {
@@ -673,6 +687,7 @@ public class FormAuthenticator
      * from the saved request so that we can redirect to it.
      *
      * @param session Our current session
+     * @return the original request URL
      */
     protected String savedRequestURL(Session session) {
 

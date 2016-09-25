@@ -16,25 +16,32 @@
  */
 package org.apache.tomcat.websocket.server;
 
-import java.io.EOFException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
-import javax.servlet.ServletInputStream;
-
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.net.SocketWrapperBase;
+import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.websocket.Transformation;
 import org.apache.tomcat.websocket.WsFrameBase;
+import org.apache.tomcat.websocket.WsIOException;
 import org.apache.tomcat.websocket.WsSession;
 
 public class WsFrameServer extends WsFrameBase {
 
-    private final ServletInputStream sis;
-    private final Object connectionReadLock = new Object();
+    private static final Log log = LogFactory.getLog(WsFrameServer.class);
+    private static final StringManager sm = StringManager.getManager(WsFrameServer.class);
+
+    private final SocketWrapperBase<?> socketWrapper;
+    private final ClassLoader applicationClassLoader;
 
 
-    public WsFrameServer(ServletInputStream sis, WsSession wsSession,
-            Transformation transformation) {
+    public WsFrameServer(SocketWrapperBase<?> socketWrapper, WsSession wsSession,
+            Transformation transformation, ClassLoader applicationClassLoader) {
         super(wsSession, transformation);
-        this.sis = sis;
+        this.socketWrapper = socketWrapper;
+        this.applicationClassLoader = applicationClassLoader;
     }
 
 
@@ -45,20 +52,21 @@ public class WsFrameServer extends WsFrameBase {
      *                     data
      */
     public void onDataAvailable() throws IOException {
-        synchronized (connectionReadLock) {
-            while (isOpen() && sis.isReady()) {
-                // Fill up the input buffer with as much data as we can
-                int read = sis.read(
-                        inputBuffer, writePos, inputBuffer.length - writePos);
-                if (read == 0) {
-                    return;
-                }
-                if (read == -1) {
-                    throw new EOFException();
-                }
-                writePos += read;
-                processInputBuffer();
+        if (log.isDebugEnabled()) {
+            log.debug("wsFrameServer.onDataAvailable");
+        }
+        while (isOpen() && socketWrapper.isReadyForRead()) {
+            // Fill up the input buffer with as much data as we can
+            int read = socketWrapper.read(
+                    false, inputBuffer, writePos, inputBuffer.length - writePos);
+            if (read <= 0) {
+                return;
             }
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("wsFrameServer.bytesRead", Integer.toString(read)));
+            }
+            writePos += read;
+            processInputBuffer();
         }
     }
 
@@ -74,5 +82,42 @@ public class WsFrameServer extends WsFrameBase {
     protected Transformation getTransformation() {
         // Overridden to make it visible to other classes in this package
         return super.getTransformation();
+    }
+
+
+    @Override
+    protected boolean isOpen() {
+        // Overridden to make it visible to other classes in this package
+        return super.isOpen();
+    }
+
+
+    @Override
+    protected Log getLog() {
+        return log;
+    }
+
+
+    @Override
+    protected void sendMessageText(boolean last) throws WsIOException {
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(applicationClassLoader);
+            super.sendMessageText(last);
+        } finally {
+            Thread.currentThread().setContextClassLoader(cl);
+        }
+    }
+
+
+    @Override
+    protected void sendMessageBinary(ByteBuffer msg, boolean last) throws WsIOException {
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(applicationClassLoader);
+            super.sendMessageBinary(msg, last);
+        } finally {
+            Thread.currentThread().setContextClassLoader(cl);
+        }
     }
 }

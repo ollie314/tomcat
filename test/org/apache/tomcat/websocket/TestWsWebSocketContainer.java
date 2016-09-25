@@ -50,7 +50,6 @@ import org.junit.Test;
 import org.apache.catalina.Context;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
-import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.net.TesterSupport;
 import org.apache.tomcat.websocket.TesterMessageCountClient.BasicBinary;
 import org.apache.tomcat.websocket.TesterMessageCountClient.BasicHandler;
@@ -60,14 +59,18 @@ import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEn
 import org.apache.tomcat.websocket.server.Constants;
 import org.apache.tomcat.websocket.server.WsContextListener;
 
-public class TestWsWebSocketContainer extends TomcatBaseTest {
+public class TestWsWebSocketContainer extends WebSocketBaseTest {
 
+    private static final String MESSAGE_EMPTY = "";
     private static final String MESSAGE_STRING_1 = "qwerty";
     private static final String MESSAGE_TEXT_4K;
     private static final byte[] MESSAGE_BINARY_4K = new byte[4096];
 
     private static final long TIMEOUT_MS = 5 * 1000;
     private static final long MARGIN = 500;
+
+    // 5s should be plenty but Gump can be a lot slower
+    private static final long START_STOP_WAIT = 60 * 1000;
 
     static {
         StringBuilder sb = new StringBuilder(4096);
@@ -85,19 +88,19 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
         // Set this artificially small to trigger
-        // https://issues.apache.org/bugzilla/show_bug.cgi?id=57054
+        // https://bz.apache.org/bugzilla/show_bug.cgi?id=57054
         wsContainer.setDefaultMaxBinaryMessageBufferSize(64);
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 ClientEndpointConfig.Builder.create().build(),
-                new URI("ws://localhost:" + getPort() +
+                new URI("ws://" + getHostName() + ":" + getPort() +
                         TesterEchoServer.Config.PATH_ASYNC));
         CountDownLatch latch = new CountDownLatch(1);
         BasicText handler = new BasicText(latch);
@@ -129,7 +132,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
                 ContainerProvider.getWebSocketContainer();
         wsContainer.connectToServer(TesterProgrammaticEndpoint.class,
                 ClientEndpointConfig.Builder.create().build(),
-                new URI("ftp://localhost:" + getPort() +
+                new URI("ftp://" + getHostName() + ":" + getPort() +
                         TesterEchoServer.Config.PATH_ASYNC));
     }
 
@@ -207,7 +210,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -237,7 +240,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 ClientEndpointConfig.Builder.create().build(),
-                        new URI("ws://localhost:" + getPort() +
+                        new URI("ws://" + getHostName() + ":" + getPort() +
                                 TesterEchoServer.Config.PATH_BASIC));
         BasicHandler<?> handler;
         CountDownLatch latch = new CountDownLatch(1);
@@ -315,7 +318,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(BlockingConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -330,7 +333,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 ClientEndpointConfig.Builder.create().build(),
-                new URI("ws://localhost:" + getPort() + BlockingConfig.PATH));
+                new URI("ws://" + getHostName() + ":" + getPort() + BlockingConfig.PATH));
 
         if (!setTimeoutOnContainer) {
             wsSession.getAsyncRemote().setSendTimeout(TIMEOUT_MS);
@@ -343,9 +346,9 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Exception exception = null;
         try {
             while (true) {
+                lastSend = System.currentTimeMillis();
                 Future<Void> f = wsSession.getAsyncRemote().sendBinary(
                         ByteBuffer.wrap(MESSAGE_BINARY_4K));
-                lastSend = System.currentTimeMillis();
                 f.get();
             }
         } catch (Exception e) {
@@ -354,9 +357,13 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         long timeout = System.currentTimeMillis() - lastSend;
 
-        // Clear the server side block and prevent and further blocks to allow
-        // the server to shutdown cleanly
+        // Clear the server side block and prevent further blocks to allow the
+        // server to shutdown cleanly
         BlockingPojo.clearBlock();
+
+        // Close the client session, primarily to allow the
+        // BackgroundProcessManager to shut down.
+        wsSession.close();
 
         String msg = "Time out was [" + timeout + "] ms";
 
@@ -400,7 +407,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ConstantTxConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -410,7 +417,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 ClientEndpointConfig.Builder.create().build(),
-                new URI("ws://localhost:" + getPort() +
+                new URI("ws://" + getHostName() + ":" + getPort() +
                         ConstantTxConfig.PATH));
 
         wsSession.addMessageHandler(new BlockingBinaryHandler());
@@ -423,6 +430,10 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
             }
             loops++;
         }
+
+        // Close the client session, primarily to allow the
+        // BackgroundProcessManager to shut down.
+        wsSession.close();
 
         // Check the right exception was thrown
         Assert.assertNotNull(ConstantTxEndpoint.getException());
@@ -611,23 +622,25 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
 
-        Session s1a = connectToEchoServer(wsContainer, EndpointA.class,
+        EndpointA endpointA = new EndpointA();
+        Session s1a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
-        Session s2a = connectToEchoServer(wsContainer, EndpointA.class,
+        Session s2a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
-        Session s3a = connectToEchoServer(wsContainer, EndpointA.class,
+        Session s3a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
 
-        Session s1b = connectToEchoServer(wsContainer, EndpointB.class,
+        EndpointB endpointB = new EndpointB();
+        Session s1b = connectToEchoServer(wsContainer, endpointB,
                 TesterEchoServer.Config.PATH_BASIC);
-        Session s2b = connectToEchoServer(wsContainer, EndpointB.class,
+        Session s2b = connectToEchoServer(wsContainer, endpointB,
                 TesterEchoServer.Config.PATH_BASIC);
 
         Set<Session> setA = s3a.getOpenSessions();
@@ -648,6 +661,13 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Assert.assertEquals(2, setB.size());
         Assert.assertTrue(setB.remove(s1b));
         Assert.assertTrue(setB.remove(s2b));
+
+        // Close sessions explicitly as Gump reports a session remains open at
+        // the end of this test
+        s2a.close();
+        s3a.close();
+        s1b.close();
+        s2b.close();
     }
 
 
@@ -659,7 +679,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
@@ -671,11 +691,12 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         wsContainer.setDefaultMaxSessionIdleTimeout(5000);
         wsContainer.setProcessPeriod(1);
 
-        connectToEchoServer(wsContainer, EndpointA.class,
+        EndpointA endpointA = new EndpointA();
+        connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
-        connectToEchoServer(wsContainer, EndpointA.class,
+        connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
-        Session s3a = connectToEchoServer(wsContainer, EndpointA.class,
+        Session s3a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
 
         // Check all three sessions are open
@@ -716,7 +737,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
@@ -728,13 +749,14 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         wsContainer.setDefaultMaxSessionIdleTimeout(5000);
         wsContainer.setProcessPeriod(1);
 
-        Session s1a = connectToEchoServer(wsContainer, EndpointA.class,
+        EndpointA endpointA = new EndpointA();
+        Session s1a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
         s1a.setMaxIdleTimeout(3000);
-        Session s2a = connectToEchoServer(wsContainer, EndpointA.class,
+        Session s2a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
         s2a.setMaxIdleTimeout(6000);
-        Session s3a = connectToEchoServer(wsContainer, EndpointA.class,
+        Session s3a = connectToEchoServer(wsContainer, endpointA,
                 TesterEchoServer.Config.PATH_BASIC);
         s3a.setMaxIdleTimeout(9000);
 
@@ -769,10 +791,10 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
     }
 
     private Session connectToEchoServer(WebSocketContainer wsContainer,
-            Class<? extends Endpoint> clazz, String path) throws Exception {
-        return wsContainer.connectToServer(clazz,
+            Endpoint endpoint, String path) throws Exception {
+        return wsContainer.connectToServer(endpoint,
                 ClientEndpointConfig.Builder.create().build(),
-                new URI("ws://localhost:" + getPort() + path));
+                new URI("ws://" + getHostName() + ":" + getPort() + path));
     }
 
     public static final class EndpointA extends Endpoint {
@@ -801,7 +823,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         TesterSupport.initSsl(tomcat);
 
@@ -812,12 +834,12 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         ClientEndpointConfig clientEndpointConfig =
                 ClientEndpointConfig.Builder.create().build();
         clientEndpointConfig.getUserProperties().put(
-                WsWebSocketContainer.SSL_TRUSTSTORE_PROPERTY,
+                org.apache.tomcat.websocket.Constants.SSL_TRUSTSTORE_PROPERTY,
                 "test/org/apache/tomcat/util/net/ca.jks");
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 clientEndpointConfig,
-                new URI("wss://localhost:" + getPort() +
+                new URI("wss://" + getHostName() + ":" + getPort() +
                         TesterEchoServer.Config.PATH_ASYNC));
         CountDownLatch latch = new CountDownLatch(1);
         BasicText handler = new BasicText(latch);
@@ -884,14 +906,17 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
 
-        Session s = connectToEchoServer(wsContainer, EndpointA.class, path);
+        Session s = connectToEchoServer(wsContainer, new EndpointA(), path);
+
+        // One for the client, one for the server
+        validateBackgroundProcessCount(2);
 
         StringBuilder msg = new StringBuilder();
         for (long i = 0; i < size; i++) {
@@ -900,7 +925,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         s.getBasicRemote().sendText(msg.toString());
 
-        // Wait for up to 5 seconds for session to close
+        // Wait for up to 5 seconds for the client session to open
         boolean open = s.isOpen();
         int count = 0;
         while (open != expectOpen && count < 50) {
@@ -911,17 +936,61 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         Assert.assertEquals(Boolean.valueOf(expectOpen),
                 Boolean.valueOf(s.isOpen()));
+
+        // Close the session if it is expected to be open
+        if (expectOpen) {
+            s.close();
+        }
+
+        // Ensure both server and client have shutdown
+        validateBackgroundProcessCount(0);
+    }
+
+
+    private void validateBackgroundProcessCount(int expected) throws Exception {
+        int count = 0;
+        while (count < (START_STOP_WAIT / 100)) {
+            if (BackgroundProcessManager.getInstance().getProcessCount() == expected) {
+                break;
+            }
+            Thread.sleep(100);
+            count++;
+        }
+        Assert.assertEquals(expected, BackgroundProcessManager.getInstance().getProcessCount());
+
+    }
+
+    @Test
+    public void testPerMessageDefalteClient01() throws Exception {
+        doTestPerMessageDefalteClient(MESSAGE_STRING_1, 1);
     }
 
 
     @Test
-    public void testPerMessageDefalteClient() throws Exception {
+    public void testPerMessageDefalteClient02() throws Exception {
+        doTestPerMessageDefalteClient(MESSAGE_EMPTY, 1);
+    }
+
+
+    @Test
+    public void testPerMessageDefalteClient03() throws Exception {
+        doTestPerMessageDefalteClient(MESSAGE_STRING_1, 2);
+    }
+
+
+    @Test
+    public void testPerMessageDefalteClient04() throws Exception {
+        doTestPerMessageDefalteClient(MESSAGE_EMPTY, 2);
+    }
+
+
+    private void doTestPerMessageDefalteClient(String msg, int count) throws Exception {
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.start();
 
@@ -937,21 +1006,27 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
                 clientConfig,
-                new URI("ws://localhost:" + getPort() +
+                new URI("ws://" + getHostName() + ":" + getPort() +
                         TesterEchoServer.Config.PATH_ASYNC));
-        CountDownLatch latch = new CountDownLatch(1);
-        BasicText handler = new BasicText(latch);
+        CountDownLatch latch = new CountDownLatch(count);
+        BasicText handler = new BasicText(latch, msg);
         wsSession.addMessageHandler(handler);
-        wsSession.getBasicRemote().sendText(MESSAGE_STRING_1);
+        for (int i = 0; i < count; i++) {
+            wsSession.getBasicRemote().sendText(msg);
+        }
 
         boolean latchResult = handler.getLatch().await(10, TimeUnit.SECONDS);
 
         Assert.assertTrue(latchResult);
 
-        Queue<String> messages = handler.getMessages();
-        Assert.assertEquals(1, messages.size());
-        Assert.assertEquals(MESSAGE_STRING_1, messages.peek());
-
         ((WsWebSocketContainer) wsContainer).destroy();
+    }
+
+
+    /*
+     * Make this possible to override so sub-class can more easily test proxy
+     */
+    protected String getHostName() {
+        return "localhost";
     }
 }

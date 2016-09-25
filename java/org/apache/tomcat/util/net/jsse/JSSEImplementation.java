@@ -18,7 +18,7 @@ package org.apache.tomcat.util.net.jsse;
 
 import javax.net.ssl.SSLSession;
 
-import org.apache.tomcat.util.net.AbstractEndpoint;
+import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 import org.apache.tomcat.util.net.SSLImplementation;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SSLUtil;
@@ -32,9 +32,11 @@ import org.apache.tomcat.util.net.SSLUtil;
 
 public class JSSEImplementation extends SSLImplementation {
 
-    @Override
-    public String getImplementationName(){
-        return "JSSE";
+    public JSSEImplementation() {
+        // Make sure the keySizeCache is loaded now as part of connector startup
+        // else the cache will be populated on first use which will slow that
+        // request down.
+        JSSESupport.init();
     }
 
     @Override
@@ -43,7 +45,7 @@ public class JSSEImplementation extends SSLImplementation {
     }
 
     @Override
-    public SSLUtil getSSLUtil(AbstractEndpoint<?> endpoint) {
-        return new JSSESocketFactory(endpoint);
+    public SSLUtil getSSLUtil(SSLHostConfigCertificate certificate) {
+        return new JSSEUtil(certificate);
     }
 }

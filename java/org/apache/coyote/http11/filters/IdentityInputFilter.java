@@ -90,24 +90,14 @@ public class IdentityInputFilter implements InputFilter {
 
     // ---------------------------------------------------- InputBuffer Methods
 
-    /**
-     * Read bytes.
-     *
-     * @return If the filter does request length control, this value is
-     * significant; it should be the number of bytes consumed from the buffer,
-     * up until the end of the current request body, or the buffer length,
-     * whichever is greater. If the filter does not do request body length
-     * control, the returned value should be -1.
-     */
     @Override
-    public int doRead(ByteChunk chunk, Request req)
-        throws IOException {
+    public int doRead(ByteChunk chunk) throws IOException {
 
         int result = -1;
 
         if (contentLength >= 0) {
             if (remaining > 0) {
-                int nRead = buffer.doRead(chunk, req);
+                int nRead = buffer.doRead(chunk);
                 if (nRead > remaining) {
                     // The chunk is longer than the number of bytes remaining
                     // in the body; changing the chunk length to the number
@@ -147,21 +137,25 @@ public class IdentityInputFilter implements InputFilter {
     }
 
 
-    /**
-     * End the current request.
-     */
     @Override
-    public long end()  throws IOException {
+    public long end() throws IOException {
 
-        if (maxSwallowSize > -1 && remaining > maxSwallowSize) {
-            throw new IOException(sm.getString("inputFilter.maxSwallow"));
-        }
+        final boolean maxSwallowSizeExceeded = (maxSwallowSize > -1 && remaining > maxSwallowSize);
+        long swallowed = 0;
 
         // Consume extra bytes.
         while (remaining > 0) {
-            int nread = buffer.doRead(endChunk, null);
+
+            int nread = buffer.doRead(endChunk);
             if (nread > 0 ) {
+                swallowed += nread;
                 remaining = remaining - nread;
+                if (maxSwallowSizeExceeded && swallowed > maxSwallowSize) {
+                    // Note: We do not fail early so the client has a chance to
+                    // read the response before the connection is closed. See:
+                    // http://httpd.apache.org/docs/2.0/misc/fin_wait_2.html#appendix
+                    throw new IOException(sm.getString("inputFilter.maxSwallow"));
+                }
             } else { // errors are handled higher up.
                 remaining = 0;
             }

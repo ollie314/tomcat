@@ -23,9 +23,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.servlet.Filter;
 import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
+import javax.servlet.GenericFilter;
 import javax.servlet.HttpConstraintElement;
 import javax.servlet.HttpMethodConstraintElement;
 import javax.servlet.MultipartConfigElement;
@@ -55,6 +54,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleException;
@@ -138,13 +138,13 @@ public class TestStandardContext extends TomcatBaseTest {
         context.addFilterDef(filterDef);
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName("Bug46243");
-        filterMap.addURLPattern("*");
+        filterMap.addURLPatternDecoded("*");
         context.addFilterMap(filterMap);
 
         // Add a test servlet so there is something to generate a response if
         // it works (although it shouldn't)
         Tomcat.addServlet(context, "Bug46243", new HelloWorldServlet());
-        context.addServletMapping("/", "Bug46243");
+        context.addServletMappingDecoded("/", "Bug46243");
     }
 
     private static final class Bug46243Client extends SimpleHttpClient {
@@ -160,12 +160,9 @@ public class TestStandardContext extends TomcatBaseTest {
         }
     }
 
-    public static final class Bug46243Filter implements Filter {
+    public static final class Bug46243Filter extends GenericFilter {
 
-        @Override
-        public void destroy() {
-            // NOOP
-        }
+        private static final long serialVersionUID = 1L;
 
         @Override
         public void doFilter(ServletRequest request, ServletResponse response,
@@ -176,14 +173,12 @@ public class TestStandardContext extends TomcatBaseTest {
         }
 
         @Override
-        public void init(FilterConfig filterConfig) throws ServletException {
-            boolean fail = filterConfig.getInitParameter("fail").equals("true");
+        public void init() throws ServletException {
+            boolean fail = getInitParameter("fail").equals("true");
             if (fail) {
-                throw new ServletException("Init fail (test)",
-                        new ClassNotFoundException());
+                throw new ServletException("Init fail (test)", new ClassNotFoundException());
             }
         }
-
     }
 
     @Test
@@ -335,12 +330,9 @@ public class TestStandardContext extends TomcatBaseTest {
     }
 
 
-    public static final class Bug49922Filter implements Filter {
+    public static final class Bug49922Filter extends GenericFilter {
 
-        @Override
-        public void destroy() {
-            // NOOP
-        }
+        private static final long serialVersionUID = 1L;
 
         @Override
         public void doFilter(ServletRequest request, ServletResponse response,
@@ -348,11 +340,6 @@ public class TestStandardContext extends TomcatBaseTest {
             response.setContentType("text/plain");
             response.getWriter().print("Filter");
             chain.doFilter(request, response);
-        }
-
-        @Override
-        public void init(FilterConfig filterConfig) throws ServletException {
-            // NOOP
         }
     }
 
@@ -748,8 +735,8 @@ public class TestStandardContext extends TomcatBaseTest {
             // to set our own MultipartConfigElement.
             w.setMultipartConfigElement(new MultipartConfigElement(""));
 
-            context.addServletMapping("/regular", "regular");
-            context.addServletMapping("/multipart", "multipart");
+            context.addServletMappingDecoded("/regular", "regular");
+            context.addServletMappingDecoded("/multipart", "multipart");
             tomcat.start();
 
             setPort(tomcat.getConnector().getLocalPort());
@@ -935,6 +922,54 @@ public class TestStandardContext extends TomcatBaseTest {
         String realPath = ((Context) tomcat.getHost().findChildren()[0]).getRealPath("\\");
 
         Assert.assertNull(realPath);
+    }
+
+    /*
+     * Check real path for directories ends with File.separator for consistency
+     * with previous major versions.
+     */
+    @Test
+    public void testBug57556a() throws Exception {
+        Tomcat tomcat = getTomcatInstanceTestWebapp(false, true);
+        Context testContext = ((Context) tomcat.getHost().findChildren()[0]);
+
+        File f = new File(testContext.getDocBase());
+        if (!f.isAbsolute()) {
+            f = new File(((Host) testContext.getParent()).getAppBaseFile(), f.getPath());
+        }
+        String base = f.getCanonicalPath();
+
+
+        doTestBug57556(testContext, "", base + File.separatorChar);
+        doTestBug57556(testContext, "/", base + File.separatorChar);
+        doTestBug57556(testContext, "/jsp", base + File.separatorChar+ "jsp");
+        doTestBug57556(testContext, "/jsp/", base + File.separatorChar+ "jsp" + File.separatorChar);
+        doTestBug57556(testContext, "/index.html", base + File.separatorChar + "index.html");
+        doTestBug57556(testContext, "/foo", base + File.separatorChar + "foo");
+        doTestBug57556(testContext, "/foo/", base + File.separatorChar + "foo" + File.separatorChar);
+    }
+
+    @Test
+    public void testBug57556b() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        File docBase = new File("/");
+        Context testContext = tomcat.addContext("", docBase.getAbsolutePath());
+        tomcat.start();
+
+        File f = new File(testContext.getDocBase());
+        if (!f.isAbsolute()) {
+            f = new File(((Host) testContext.getParent()).getAppBaseFile(), f.getPath());
+        }
+        String base = f.getCanonicalPath();
+
+        doTestBug57556(testContext, "", base);
+        doTestBug57556(testContext, "/", base);
+    }
+
+    private void doTestBug57556(Context testContext, String path, String expected) throws Exception {
+        String realPath = testContext.getRealPath(path);
+        Assert.assertNotNull(realPath);
+        Assert.assertEquals(expected, realPath);
     }
 
     @Test

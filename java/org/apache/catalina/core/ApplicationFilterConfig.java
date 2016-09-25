@@ -59,7 +59,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
     private static final long serialVersionUID = 1L;
 
-    protected static final StringManager sm =
+    static final StringManager sm =
         StringManager.getManager(Constants.Package);
 
     private static final Log log = LogFactory.getLog(ApplicationFilterConfig.class);
@@ -153,7 +153,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
     }
 
     /**
-     * Return the class of the filter we are configuring.
+     * @return The class of the filter we are configuring.
      */
     public String getFilterClass() {
         return filterDef.getFilterClass();
@@ -300,8 +300,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
         unregisterJMX();
 
-        if (this.filter != null)
-        {
+        if (this.filter != null) {
             try {
                 if (Globals.IS_SECURITY_ENABLED) {
                     try {
@@ -326,7 +325,9 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
                     Throwable t = ExceptionUtils
                             .unwrapInvocationTargetException(e);
                     ExceptionUtils.handleThrowable(t);
-                    context.getLogger().error("ApplicationFilterConfig.preDestroy", t);
+                    context.getLogger().error(
+                            sm.getString("applicationFilterConfig.preDestroy",
+                                    filterDef.getFilterName(), filterDef.getFilterClass()), t);
                 }
             }
         }

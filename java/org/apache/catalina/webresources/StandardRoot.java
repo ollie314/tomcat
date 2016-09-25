@@ -61,9 +61,8 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot {
 
-    private static final Log log = LogFactory.getLog(Cache.class);
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    private static final Log log = LogFactory.getLog(StandardRoot.class);
+    protected static final StringManager sm = StringManager.getManager(StandardRoot.class);
 
     private Context context;
     private boolean allowLinking = false;
@@ -362,7 +361,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     }
 
     // TODO: Should the createWebResourceSet() methods be removed to some
-    //       utility class for fiel system based resource sets?
+    //       utility class for file system based resource sets?
 
     @Override
     public void createWebResourceSet(ResourceSetType type, String webAppMount,
@@ -473,6 +472,10 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public void setAllowLinking(boolean allowLinking) {
+        if (this.allowLinking != allowLinking && cachingAllowed) {
+            // If allow linking changes, invalidate the cache.
+            cache.clear();
+        }
         this.allowLinking = allowLinking;
     }
 
@@ -560,10 +563,10 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         this.context = context;
     }
 
-    /*
+    /**
      * Class loader resources are handled by treating JARs in WEB-INF/lib as
      * resource JARs (without the internal META-INF/resources/ prefix) mounted
-     * at WEB-INF/claasses (rather than the web app root). This enables reuse
+     * at WEB-INF/classes (rather than the web app root). This enables reuse
      * of the resource handling plumbing.
      *
      * These resources are marked as class loader only so they are only used in
@@ -583,7 +586,8 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     }
 
     /**
-     * For unit testing
+     * For unit testing.
+     * @param main The main resources
      */
     protected final void setMainResources(WebResourceSet main) {
         this.main = main;
@@ -595,13 +599,19 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     @Override
     public void backgroundProcess() {
         cache.backgroundProcess();
+        gc();
+    }
+
+
+
+    @Override
+    public void gc() {
         for (List<WebResourceSet> list : allResources) {
             for (WebResourceSet webResourceSet : list) {
-                webResourceSet.backgroundProcess();
+                webResourceSet.gc();
             }
         }
     }
-
 
     @Override
     public void registerTrackedResource(TrackedWebResource trackedResource) {

@@ -77,7 +77,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ProgramaticServerEndpointConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 
@@ -97,8 +97,8 @@ public class TestEncodingDecoding extends TomcatBaseTest {
                     client.received.size() > 0) {
                 break;
             }
-            Thread.sleep(100);
             i++;
+            Thread.sleep(100);
         }
 
         // Check messages were received
@@ -126,7 +126,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -147,6 +147,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -185,7 +186,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -207,6 +208,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -233,7 +235,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -252,6 +254,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -280,7 +283,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -299,6 +302,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -470,7 +474,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
     public static class MsgByteMessageHandler implements
             MessageHandler.Whole<MsgByte> {
 
-        public static Queue<Object> received = new ConcurrentLinkedQueue<>();
+        public static final Queue<Object> received = new ConcurrentLinkedQueue<>();
         private final Session session;
 
         public MsgByteMessageHandler(Session session) {
@@ -494,7 +498,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
 
     public static class MsgStringMessageHandler implements MessageHandler.Whole<MsgString> {
 
-        public static Queue<Object> received = new ConcurrentLinkedQueue<>();
+        public static final Queue<Object> received = new ConcurrentLinkedQueue<>();
         private final Session session;
 
         public MsgStringMessageHandler(Session session) {
@@ -760,7 +764,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ProgramaticServerEndpointConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 

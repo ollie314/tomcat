@@ -171,10 +171,9 @@ public class NioBlockingSelector {
             while(!timedout) {
                 if (keycount > 0) { //only read if we were registered for a read
                     read = socket.read(buf);
-                    if (read == -1)
-                        throw new EOFException();
-                    if (read > 0)
+                    if (read != 0) {
                         break;
+                    }
                 }
                 try {
                     if ( att.getReadLatch()==null || att.getReadLatch().getCount()==0) att.startReadLatch(1);
@@ -246,7 +245,6 @@ public class NioBlockingSelector {
         public void add(final NioSocketWrapper key, final int ops, final KeyReference ref) {
             if ( key == null ) return;
             NioChannel nch = key.getSocket();
-            if ( nch == null ) return;
             final SocketChannel ch = nch.getIOChannel();
             if ( ch == null ) return;
 
@@ -277,7 +275,6 @@ public class NioBlockingSelector {
         public void remove(final NioSocketWrapper key, final int ops) {
             if ( key == null ) return;
             NioChannel nch = key.getSocket();
-            if ( nch == null ) return;
             final SocketChannel ch = nch.getIOChannel();
             if ( ch == null ) return;
 
@@ -366,7 +363,6 @@ public class NioBlockingSelector {
                         SelectionKey sk = iterator.next();
                         NioSocketWrapper attachment = (NioSocketWrapper)sk.attachment();
                         try {
-                            attachment.access();
                             iterator.remove();
                             sk.interestOps(sk.interestOps() & (~sk.readyOps()));
                             if ( sk.isReadable() ) {

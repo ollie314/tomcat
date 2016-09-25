@@ -17,6 +17,7 @@
 package org.apache.coyote.http11;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import org.apache.coyote.ActionCode;
 import org.apache.coyote.OutputBuffer;
@@ -26,7 +27,6 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
-import org.apache.tomcat.util.http.HttpMessages;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -57,25 +57,19 @@ public class Http11OutputBuffer implements OutputBuffer {
     /**
      * Associated Coyote response.
      */
-    protected Response response;
-
-
-    /**
-     * Committed flag.
-     */
-    protected boolean committed;
+    protected final Response response;
 
 
     /**
      * Finished flag.
      */
-    protected boolean finished;
+    protected boolean responseFinished;
 
 
     /**
      * The buffer used for header composition.
      */
-    protected byte[] headerBuffer;
+    protected final byte[] headerBuffer;
 
 
     /**
@@ -130,13 +124,9 @@ public class Http11OutputBuffer implements OutputBuffer {
         activeFilters = new OutputFilter[0];
         lastActiveFilter = -1;
 
-        committed = false;
-        finished = false;
+        responseFinished = false;
 
         outputStreamOutputBuffer = new SocketOutputBuffer();
-
-        // Cause loading of HttpMessages
-        HttpMessages.getInstance(response.getLocale()).getMessage(200);
     }
 
 
@@ -204,7 +194,25 @@ public class Http11OutputBuffer implements OutputBuffer {
     @Override
     public int doWrite(ByteChunk chunk) throws IOException {
 
-        if (!committed) {
+        if (!response.isCommitted()) {
+            // Send the connector a request for commit. The connector should
+            // then validate the headers, send them (using sendHeaders) and
+            // set the filters accordingly.
+            response.action(ActionCode.COMMIT, null);
+        }
+
+        if (lastActiveFilter == -1) {
+            return outputStreamOutputBuffer.doWrite(chunk);
+        } else {
+            return activeFilters[lastActiveFilter].doWrite(chunk);
+        }
+    }
+
+
+    @Override
+    public int doWrite(ByteBuffer chunk) throws IOException {
+
+        if (!response.isCommitted()) {
             // Send the connector a request for commit. The connector should
             // then validate the headers, send them (using sendHeaders) and
             // set the filters accordingly.
@@ -237,14 +245,6 @@ public class Http11OutputBuffer implements OutputBuffer {
      * @throws IOException an underlying I/O error occurred
      */
     public void flush() throws IOException {
-
-        if (!committed) {
-            // Send the connector a request for commit. The connector should
-            // then validate the headers, send them (using sendHeader) and
-            // set the filters accordingly.
-            response.action(ActionCode.COMMIT, null);
-        }
-
         // go through the filters and if there is gzip filter
         // invoke it to flush
         for (int i = 0; i <= lastActiveFilter; i++) {
@@ -264,20 +264,11 @@ public class Http11OutputBuffer implements OutputBuffer {
 
 
     /**
-     * Reset current response.
-     *
-     * @throws IllegalStateException if the response has already been committed
+     * Reset the header buffer if an error occurs during the writing of the
+     * headers so the error response can be written.
      */
-    public void reset() {
-
-        if (committed) {
-            throw new IllegalStateException(sm.getString("iob.illegalreset"));
-        }
-
-        // These will need to be reset if the reset was triggered by the error
-        // handling if the headers were too large
+    void resetHeaderBuffer() {
         pos = 0;
-        byteCount = 0;
     }
 
 
@@ -307,27 +298,18 @@ public class Http11OutputBuffer implements OutputBuffer {
         // Reset pointers
         pos = 0;
         lastActiveFilter = -1;
-        committed = false;
-        finished = false;
+        responseFinished = false;
         byteCount = 0;
     }
 
 
     /**
-     * End request.
+     * Finish writing the response.
      *
      * @throws IOException an underlying I/O error occurred
      */
-    public void endRequest() throws IOException {
-
-        if (!committed) {
-            // Send the connector a request for commit. The connector should
-            // then validate the headers, send them (using sendHeader) and
-            // set the filters accordingly.
-            response.action(ActionCode.COMMIT, null);
-        }
-
-        if (finished) {
+    public void finishResponse() throws IOException {
+        if (responseFinished) {
             return;
         }
 
@@ -337,7 +319,7 @@ public class Http11OutputBuffer implements OutputBuffer {
 
         flushBuffer(true);
 
-        finished = true;
+        responseFinished = true;
     }
 
 
@@ -347,7 +329,7 @@ public class Http11OutputBuffer implements OutputBuffer {
 
 
     public void sendAck() throws IOException {
-        if (!committed) {
+        if (!response.isCommitted()) {
             socketWrapper.write(isBlocking(), Constants.ACK_BYTES, 0, Constants.ACK_BYTES.length);
             if (flushBuffer(true)) {
                 throw new IOException(sm.getString("iob.failedwrite.ack"));
@@ -362,8 +344,6 @@ public class Http11OutputBuffer implements OutputBuffer {
      * @throws IOException an underlying I/O error occurred
      */
     protected void commit() throws IOException {
-        // The response is now committed
-        committed = true;
         response.setCommitted(true);
 
         if (pos > 0) {
@@ -399,18 +379,9 @@ public class Http11OutputBuffer implements OutputBuffer {
 
         headerBuffer[pos++] = Constants.SP;
 
-        // Write message
-        String message = null;
-        if (org.apache.coyote.Constants.USE_CUSTOM_STATUS_MSG_IN_HEADER &&
-                HttpMessages.isSafeInHttpHeader(response.getMessage())) {
-            message = response.getMessage();
-        }
-        if (message == null) {
-            write(HttpMessages.getInstance(
-                    response.getLocale()).getMessage(status));
-        } else {
-            write(message);
-        }
+        // The reason phrase is optional but the space before it is not. Skip
+        // sending the reason phrase. Clients should ignore it (RFC 7230) and it
+        // just wastes bytes.
 
         headerBuffer[pos++] = Constants.CR;
         headerBuffer[pos++] = Constants.LF;
@@ -539,7 +510,9 @@ public class Http11OutputBuffer implements OutputBuffer {
      * requested number of bytes.
      */
     private void checkLengthBeforeWrite(int length) {
-        if (pos + length > headerBuffer.length) {
+        // "+ 4": BZ 57509. Reserve space for CR/LF/COLON/SP characters that
+        // are put directly into the buffer following this write operation.
+        if (pos + length + 4 > headerBuffer.length) {
             throw new HeadersTooLargeException(
                     sm.getString("iob.responseheadertoolarge.error"));
         }
@@ -554,7 +527,7 @@ public class Http11OutputBuffer implements OutputBuffer {
      * @param block     Should this method block until the buffer is empty
      * @return  <code>true</code> if data remains in the buffer (which can only
      *          happen in non-blocking mode) else <code>false</code>.
-     * @throws IOException
+     * @throws IOException Error writing data
      */
     protected boolean flushBuffer(boolean block) throws IOException  {
         return socketWrapper.flush(block);
@@ -563,6 +536,7 @@ public class Http11OutputBuffer implements OutputBuffer {
 
     /**
      * Is standard Servlet blocking IO being used for output?
+     * @return <code>true</code> if this is blocking IO
      */
     protected final boolean isBlocking() {
         return response.getWriteListener() == null;
@@ -583,6 +557,11 @@ public class Http11OutputBuffer implements OutputBuffer {
     }
 
 
+    public void registerWriteInterest() {
+        socketWrapper.registerWriteInterest();
+    }
+
+
     // ------------------------------------------ SocketOutputBuffer Inner Class
 
     /**
@@ -599,6 +578,18 @@ public class Http11OutputBuffer implements OutputBuffer {
             int start = chunk.getStart();
             byte[] b = chunk.getBuffer();
             socketWrapper.write(isBlocking(), b, start, len);
+            byteCount += len;
+            return len;
+        }
+
+        /**
+         * Write chunk.
+         */
+        @Override
+        public int doWrite(ByteBuffer chunk) throws IOException {
+            int len = chunk.remaining();
+            socketWrapper.write(isBlocking(), chunk);
+            len -= chunk.remaining();
             byteCount += len;
             return len;
         }

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.util.Locale;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -37,6 +38,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.catalina.Context;
 import org.apache.catalina.authenticator.SSLAuthenticator;
 import org.apache.catalina.connector.Connector;
+import org.apache.catalina.core.AprLifecycleListener;
+import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
@@ -57,6 +60,14 @@ public final class TesterSupport {
         String protocol = tomcat.getConnector().getProtocolHandlerClassName();
         if (protocol.indexOf("Apr") == -1) {
             Connector connector = tomcat.getConnector();
+            String sslImplementation = System.getProperty("tomcat.test.sslImplementation");
+            if (sslImplementation != null && !"${test.sslImplementation}".equals(sslImplementation)) {
+                StandardServer server = (StandardServer) tomcat.getServer();
+                AprLifecycleListener listener = new AprLifecycleListener();
+                listener.setSSLRandomSeed("/dev/urandom");
+                server.addLifecycleListener(listener);
+                tomcat.getConnector().setAttribute("sslImplementationName", sslImplementation);
+            }
             connector.setProperty("sslProtocol", "tls");
             File keystoreFile =
                 new File("test/org/apache/tomcat/util/net/" + keystore);
@@ -124,7 +135,7 @@ public final class TesterSupport {
     }
 
     protected static boolean isMacOs() {
-        return System.getProperty("os.name").toLowerCase().startsWith("mac os x");
+        return System.getProperty("os.name").toLowerCase(Locale.ENGLISH).startsWith("mac os x");
     }
 
     protected static boolean isRenegotiationSupported(Tomcat tomcat) {
@@ -133,8 +144,23 @@ public final class TesterSupport {
             // Disabled by default in 1.1.20 windows binary (2010-07-27)
             return false;
         }
+
+        return true;
+    }
+
+    protected static boolean isClientRenegotiationSupported(Tomcat tomcat) {
+        String protocol = tomcat.getConnector().getProtocolHandlerClassName();
+        if (protocol.contains("Apr")) {
+            // Disabled by default in 1.1.20 windows binary (2010-07-27)
+            return false;
+        }
         if (protocol.contains("NioProtocol") || (protocol.contains("Nio2Protocol") && isMacOs())) {
             // Doesn't work on all platforms - see BZ 56448.
+            return false;
+        }
+        String sslImplementation = System.getProperty("tomcat.test.sslImplementation");
+        if (sslImplementation != null && !"${test.sslImplementation}".equals(sslImplementation)) {
+            // Assume custom SSL is not supporting this
             return false;
         }
 
@@ -149,12 +175,12 @@ public final class TesterSupport {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "simple", new SimpleServlet());
-        ctx.addServletMapping("/unprotected", "simple");
-        ctx.addServletMapping("/protected", "simple");
+        ctx.addServletMappingDecoded("/unprotected", "simple");
+        ctx.addServletMappingDecoded("/protected", "simple");
 
         // Security constraints
         SecurityCollection collection = new SecurityCollection();
-        collection.addPattern("/protected");
+        collection.addPatternDecoded("/protected");
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);

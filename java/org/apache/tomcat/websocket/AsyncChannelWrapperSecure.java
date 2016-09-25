@@ -51,7 +51,7 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
     private static final Log log =
             LogFactory.getLog(AsyncChannelWrapperSecure.class);
     private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
+            StringManager.getManager(AsyncChannelWrapperSecure.class);
 
     private static final ByteBuffer DUMMY = ByteBuffer.allocate(8192);
     private final AsynchronousSocketChannel socketChannel;
@@ -263,8 +263,8 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                     socketReadBuffer.compact();
 
                     if (forceRead) {
-                        Future<Integer> f =
-                                socketChannel.read(socketReadBuffer);
+                        forceRead = false;
+                        Future<Integer> f = socketChannel.read(socketReadBuffer);
                         Integer socketRead = f.get();
                         if (socketRead.intValue() == -1) {
                             throw new EOFException(sm.getString(
@@ -403,8 +403,9 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                             handshaking = false;
                             break;
                         }
-                        default: {
-                            throw new SSLException("TODO");
+                        case NOT_HANDSHAKING: {
+                            throw new SSLException(
+                                    sm.getString("asyncChannelWrapperSecure.notHandshaking"));
                         }
                     }
                 }
@@ -424,13 +425,14 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
 
             if (resultStatus != Status.OK &&
                     (wrap || resultStatus != Status.BUFFER_UNDERFLOW)) {
-                throw new SSLException("TODO");
+                throw new SSLException(
+                        sm.getString("asyncChannelWrapperSecure.check.notOk", resultStatus));
             }
             if (wrap && result.bytesConsumed() != 0) {
-                throw new SSLException("TODO");
+                throw new SSLException(sm.getString("asyncChannelWrapperSecure.check.wrap"));
             }
             if (!wrap && result.bytesProduced() != 0) {
-                throw new SSLException("TODO");
+                throw new SSLException(sm.getString("asyncChannelWrapperSecure.check.unwrap"));
             }
         }
     }
@@ -541,7 +543,7 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                 throw new ExecutionException(sm.getString(
                         "asyncChannelWrapperSecure.tooBig", result), null);
             }
-            return new Integer(result.intValue());
+            return Integer.valueOf(result.intValue());
         }
 
         @Override
@@ -553,7 +555,7 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                 throw new ExecutionException(sm.getString(
                         "asyncChannelWrapperSecure.tooBig", result), null);
             }
-            return new Integer(result.intValue());
+            return Integer.valueOf(result.intValue());
         }
     }
 

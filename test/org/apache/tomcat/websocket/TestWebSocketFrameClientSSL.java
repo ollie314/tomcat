@@ -33,14 +33,12 @@ import org.junit.Test;
 import org.apache.catalina.Context;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
-import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.net.TesterSupport;
 import org.apache.tomcat.websocket.TesterMessageCountClient.BasicText;
 import org.apache.tomcat.websocket.TesterMessageCountClient.SleepingText;
 import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEndpoint;
 
-public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
-
+public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
 
     @Test
     public void testConnectToServerEndpoint() throws Exception {
@@ -49,7 +47,7 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterFirehoseServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         TesterSupport.initSsl(tomcat);
 
@@ -60,7 +58,7 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         ClientEndpointConfig clientEndpointConfig =
                 ClientEndpointConfig.Builder.create().build();
         clientEndpointConfig.getUserProperties().put(
-                WsWebSocketContainer.SSL_TRUSTSTORE_PROPERTY,
+                Constants.SSL_TRUSTSTORE_PROPERTY,
                 "test/org/apache/tomcat/util/net/ca.jks");
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
@@ -96,7 +94,7 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterFirehoseServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         TesterSupport.initSsl(tomcat);
 
@@ -107,7 +105,7 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         ClientEndpointConfig clientEndpointConfig =
                 ClientEndpointConfig.Builder.create().build();
         clientEndpointConfig.getUserProperties().put(
-                WsWebSocketContainer.SSL_TRUSTSTORE_PROPERTY,
+                Constants.SSL_TRUSTSTORE_PROPERTY,
                 "test/org/apache/tomcat/util/net/ca.jks");
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
@@ -148,5 +146,8 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         if (openConnectionCount != 0) {
             Assert.fail("There are [" + openConnectionCount + "] connections still open");
         }
+
+        // Close the client session.
+        wsSession.close();
     }
 }

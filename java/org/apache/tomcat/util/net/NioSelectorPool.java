@@ -44,7 +44,7 @@ public class NioSelectorPool {
     private static final Log log = LogFactory.getLog(NioSelectorPool.class);
 
     protected static final boolean SHARED =
-        Boolean.valueOf(System.getProperty("org.apache.tomcat.util.net.NioSelectorShared", "true")).booleanValue();
+        Boolean.parseBoolean(System.getProperty("org.apache.tomcat.util.net.NioSelectorShared", "true"));
 
     protected NioBlockingSelector blockingSelector;
 
@@ -71,7 +71,6 @@ public class NioSelectorPool {
         return  SHARED_SELECTOR;
     }
 
-    @SuppressWarnings("resource") // s is closed in put()
     public Selector get() throws IOException{
         if ( SHARED ) {
             return getSharedSelector();
@@ -245,7 +244,12 @@ public class NioSelectorPool {
                 int cnt = 0;
                 if ( keycount > 0 ) { //only read if we were registered for a read
                     cnt = socket.read(buf);
-                    if (cnt == -1) throw new EOFException();
+                    if (cnt == -1) {
+                        if (read == 0) {
+                            read = -1;
+                        }
+                        break;
+                    }
                     read += cnt;
                     if (cnt > 0) continue; //read some more
                     if (cnt==0 && (read>0 || (!block) ) ) break; //we are done reading

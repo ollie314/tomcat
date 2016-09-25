@@ -520,6 +520,10 @@ cannot use <code>$N</code> in the substitution string!
       or it is explicitly terminated by a
       <code><strong>L</strong></code> flag.</p>
 
+      <p>The special characters <code>$</code> and <code>%</code> can
+      be quoted by prepending them with a backslash character
+      <code>\</code>.</p>
+
       <p>There is a special substitution string named
       '<code>-</code>' which means: <strong>NO
       substitution</strong>! This is useful in providing
@@ -528,6 +532,10 @@ cannot use <code>$N</code> in the substitution string!
       in conjunction with the <strong>C</strong> (chain) flag, in order
       to apply more than one pattern before substitution occurs.</p>
 
+      <p>Unlike newer mod_rewrite versions, the Tomcat rewrite valve does
+      not automatically support absolute URLs (the specific redirect flag
+      must be used to be able to specify an absolute URLs, see below)
+      or direct file serving.</p>
 
       <p>Additionally you can set special <span
       id="rewriteflags">flags</span> for <em>Substitution</em> by

@@ -199,6 +199,18 @@ public final class EmbeddedServletOptions implements Options {
      */
     private int jspIdleTimeout = -1;
 
+    /**
+     * Should JSP.1.6 be applied strictly to attributes defined using scriptlet
+     * expressions?
+     */
+    private boolean strictQuoteEscaping = true;
+
+    /**
+     * When EL is used in JSP attribute values, should the rules for quoting of
+     * attributes described in JSP.1.6 be applied to the expression?
+     */
+    private boolean quoteAttributeEL = true;
+
     public String getProperty(String name ) {
         return settings.getProperty( name );
     }
@@ -207,6 +219,15 @@ public final class EmbeddedServletOptions implements Options {
         if (name != null && value != null){
             settings.setProperty( name, value );
         }
+    }
+
+    public void setQuoteAttributeEL(boolean b) {
+        this.quoteAttributeEL = b;
+    }
+
+    @Override
+    public boolean getQuoteAttributeEL() {
+        return quoteAttributeEL;
     }
 
     /**
@@ -442,12 +463,18 @@ public final class EmbeddedServletOptions implements Options {
         return jspIdleTimeout;
     }
 
+    @Override
+    public boolean getStrictQuoteEscaping() {
+        return strictQuoteEscaping;
+    }
+
     /**
      * Create an EmbeddedServletOptions object using data available from
      * ServletConfig and ServletContext.
+     * @param config The Servlet config
+     * @param context The Servlet context
      */
-    public EmbeddedServletOptions(ServletConfig config,
-            ServletContext context) {
+    public EmbeddedServletOptions(ServletConfig config, ServletContext context) {
 
         Enumeration<String> enumeration=config.getInitParameterNames();
         while( enumeration.hasMoreElements() ) {
@@ -484,8 +511,7 @@ public final class EmbeddedServletOptions implements Options {
         }
 
         this.isPoolingEnabled = true;
-        String poolingEnabledParam
-        = config.getInitParameter("enablePooling");
+        String poolingEnabledParam = config.getInitParameter("enablePooling");
         if (poolingEnabledParam != null
                 && !poolingEnabledParam.equalsIgnoreCase("true")) {
             if (poolingEnabledParam.equalsIgnoreCase("false")) {
@@ -609,8 +635,7 @@ public final class EmbeddedServletOptions implements Options {
             }
         }
 
-        String errBeanClass =
-            config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
+        String errBeanClass = config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
         if (errBeanClass != null) {
             if (errBeanClass.equalsIgnoreCase("true")) {
                 errorOnUseBeanInvalidClassAttribute = true;
@@ -635,6 +660,10 @@ public final class EmbeddedServletOptions implements Options {
          * scratchdir
          */
         String dir = config.getInitParameter("scratchdir");
+        if (dir != null && Constants.IS_SECURITY_ENABLED) {
+            log.info(Localizer.getMessage("jsp.info.ignoreSetting", "scratchdir", dir));
+            dir = null;
+        }
         if (dir != null) {
             scratchDir = new File(dir);
         } else {
@@ -737,6 +766,32 @@ public final class EmbeddedServletOptions implements Options {
             } catch(NumberFormatException ex) {
                 if (log.isWarnEnabled()) {
                     log.warn(Localizer.getMessage("jsp.warning.jspIdleTimeout", ""+this.jspIdleTimeout));
+                }
+            }
+        }
+
+        String strictQuoteEscaping = config.getInitParameter("strictQuoteEscaping");
+        if (strictQuoteEscaping != null) {
+            if (strictQuoteEscaping.equalsIgnoreCase("true")) {
+                this.strictQuoteEscaping = true;
+            } else if (strictQuoteEscaping.equalsIgnoreCase("false")) {
+                this.strictQuoteEscaping = false;
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn(Localizer.getMessage("jsp.warning.strictQuoteEscaping"));
+                }
+            }
+        }
+
+        String quoteAttributeEL = config.getInitParameter("quoteAttributeEL");
+        if (quoteAttributeEL != null) {
+            if (quoteAttributeEL.equalsIgnoreCase("true")) {
+                this.quoteAttributeEL = true;
+            } else if (quoteAttributeEL.equalsIgnoreCase("false")) {
+                this.quoteAttributeEL = false;
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn(Localizer.getMessage("jsp.warning.quoteAttributeEL"));
                 }
             }
         }

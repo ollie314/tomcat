@@ -177,7 +177,7 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
      * Finally, wait for the non-login session to expire and try again..
      * This should be rejected with SC_FORBIDDEN 403 status.
      *
-     * (see bugfix https://issues.apache.org/bugzilla/show_bug.cgi?id=52303)
+     * (see bugfix https://bz.apache.org/bugzilla/show_bug.cgi?id=52303)
      */
     @Test
     public void testDigestExpiredAcceptProtectedWithCookies() throws Exception {
@@ -330,9 +330,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add protected servlet
         Tomcat.addServlet(ctxt, "TesterServlet1", new TesterServlet());
-        ctxt.addServletMapping(URI_PROTECTED, "TesterServlet1");
+        ctxt.addServletMappingDecoded(URI_PROTECTED, "TesterServlet1");
         SecurityCollection collection1 = new SecurityCollection();
-        collection1.addPattern(URI_PROTECTED);
+        collection1.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc1 = new SecurityConstraint();
         sc1.addAuthRole(ROLE);
         sc1.addCollection(collection1);
@@ -340,9 +340,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add unprotected servlet
         Tomcat.addServlet(ctxt, "TesterServlet2", new TesterServlet());
-        ctxt.addServletMapping(URI_PUBLIC, "TesterServlet2");
+        ctxt.addServletMappingDecoded(URI_PUBLIC, "TesterServlet2");
         SecurityCollection collection2 = new SecurityCollection();
-        collection2.addPattern(URI_PUBLIC);
+        collection2.addPatternDecoded(URI_PUBLIC);
         SecurityConstraint sc2 = new SecurityConstraint();
         // do not add a role - which signals access permitted without one
         sc2.addCollection(collection2);
@@ -364,9 +364,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add protected servlet
         Tomcat.addServlet(ctxt, "TesterServlet3", new TesterServlet());
-        ctxt.addServletMapping(URI_PROTECTED, "TesterServlet3");
+        ctxt.addServletMappingDecoded(URI_PROTECTED, "TesterServlet3");
         SecurityCollection collection = new SecurityCollection();
-        collection.addPattern(URI_PROTECTED);
+        collection.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);
@@ -470,16 +470,35 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
     protected void saveCookies(Map<String,List<String>> respHeaders) {
 
         // we only save the Cookie values, not header prefix
-        cookies = respHeaders.get(SERVER_COOKIES);
+        List<String> cookieHeaders = respHeaders.get(SERVER_COOKIES);
+        if (cookieHeaders == null) {
+            cookies = null;
+        } else {
+            cookies = new ArrayList<>(cookieHeaders.size());
+            for (String cookieHeader : cookieHeaders) {
+                cookies.add(cookieHeader.substring(0, cookieHeader.indexOf(';')));
+            }
+        }
     }
 
     /*
      * add all saved cookies to the outgoing request
      */
     protected void addCookies(Map<String,List<String>> reqHeaders) {
-
         if ((cookies != null) && (cookies.size() > 0)) {
-            reqHeaders.put(BROWSER_COOKIES + ":", cookies);
+            StringBuilder cookieHeader = new StringBuilder();
+            boolean first = true;
+            for (String cookie : cookies) {
+                if (!first) {
+                    cookieHeader.append(';');
+                } else {
+                    first = false;
+                }
+                cookieHeader.append(cookie);
+            }
+            List<String> cookieHeaderList = new ArrayList<>(1);
+            cookieHeaderList.add(cookieHeader.toString());
+            reqHeaders.put(BROWSER_COOKIES, cookieHeaderList);
         }
     }
 }

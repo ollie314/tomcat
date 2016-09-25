@@ -17,6 +17,7 @@
 package org.apache.catalina.loader;
 
 import java.io.InputStream;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Filter;
 import java.util.logging.LogManager;
@@ -24,8 +25,8 @@ import java.util.logging.LogRecord;
 
 import javax.servlet.http.HttpServletResponse;
 
-
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -34,7 +35,24 @@ import org.apache.catalina.core.StandardHost;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
+/*
+ * These unit tests are ignored by default as they are not reliable. They have
+ * been failing regularly on Gump for some time and have recently started to
+ * fail regularly on markt's laptop.
+ *
+ * The problem is that the ThreadLocal Maps are affected by GC. If GC occurs at
+ * the wrong point, the leaking ThreadLocal will be cleaned up and the test will
+ * fail. It is not possible to force the test to pass without effectively
+ * changing the nature of the test so it no longer tests detection of leaks via
+ * ThreadLocals.
+ *
+ * The test has been left in place since it will work reasonably reliably on
+ * most systems (just not all and particularly some of the ASF's CI systems) and
+ * still may be useful if a bug is reported in this area in the future.
+ */
+@Ignore
 public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
     @Test
@@ -50,10 +68,12 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         Tomcat.addServlet(ctx, "leakServlet1",
                 "org.apache.tomcat.unittest.TesterLeakingServlet1");
-        ctx.addServletMapping("/leak1", "leakServlet1");
-
+        ctx.addServletMappingDecoded("/leak1", "leakServlet1");
 
         tomcat.start();
+
+        Executor executor = tomcat.getConnector().getProtocolHandler().getExecutor();
+        ((ThreadPoolExecutor) executor).setThreadRenewalDelay(-1);
 
         // Configure logging filter to check leak message appears
         LogValidationFilter f = new LogValidationFilter(
@@ -104,9 +124,12 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         Tomcat.addServlet(ctx, "leakServlet2",
                 "org.apache.tomcat.unittest.TesterLeakingServlet2");
-        ctx.addServletMapping("/leak2", "leakServlet2");
+        ctx.addServletMappingDecoded("/leak2", "leakServlet2");
 
         tomcat.start();
+
+        Executor executor = tomcat.getConnector().getProtocolHandler().getExecutor();
+        ((ThreadPoolExecutor) executor).setThreadRenewalDelay(-1);
 
         // Configure logging filter to check leak message appears
         LogValidationFilter f = new LogValidationFilter(

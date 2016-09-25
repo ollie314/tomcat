@@ -52,6 +52,7 @@ import javax.servlet.jsp.tagext.BodyContent;
 import org.apache.jasper.Constants;
 import org.apache.jasper.compiler.Localizer;
 import org.apache.jasper.el.ELContextImpl;
+import org.apache.jasper.runtime.JspContextWrapper.ELContextWrapper;
 import org.apache.jasper.security.SecurityUtil;
 
 /**
@@ -856,7 +857,7 @@ public class PageContextImpl extends PageContext {
              */
             request.setAttribute(PageContext.EXCEPTION, t);
             request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE,
-                    new Integer(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
+                    Integer.valueOf(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
             request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI,
                     ((HttpServletRequest) request).getRequestURI());
             request.setAttribute(RequestDispatcher.ERROR_SERVLET_NAME,
@@ -924,14 +925,21 @@ public class PageContextImpl extends PageContext {
      * @param functionMap
      *            Maps prefix and name to Method
      * @return The result of the evaluation
+     * @throws ELException If an error occurs during the evaluation
      */
     public static Object proprietaryEvaluate(final String expression,
             final Class<?> expectedType, final PageContext pageContext,
             final ProtectedFunctionMapper functionMap)
             throws ELException {
         final ExpressionFactory exprFactory = jspf.getJspApplicationContext(pageContext.getServletContext()).getExpressionFactory();
-        ELContextImpl ctx = (ELContextImpl) pageContext.getELContext();
-        ctx.setFunctionMapper(functionMap);
+        ELContext ctx = pageContext.getELContext();
+        ELContextImpl ctxImpl;
+        if (ctx instanceof ELContextWrapper) {
+            ctxImpl = (ELContextImpl) ((ELContextWrapper) ctx).getWrappedELContext();
+        } else {
+            ctxImpl = (ELContextImpl) ctx;
+        }
+        ctxImpl.setFunctionMapper(functionMap);
         ValueExpression ve = exprFactory.createValueExpression(ctx, expression, expectedType);
         return ve.getValue(ctx);
     }

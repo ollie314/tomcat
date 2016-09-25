@@ -31,8 +31,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class Cache {
 
     private static final Log log = LogFactory.getLog(Cache.class);
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(Cache.class);
 
     private static final long TARGET_FREE_PERCENT_GET = 5;
     private static final long TARGET_FREE_PERCENT_BACKGROUND = 10;
@@ -59,11 +58,11 @@ public class Cache {
 
     protected WebResource getResource(String path, boolean useClassLoaderResources) {
 
-        lookupCount.incrementAndGet();
-
         if (noCache(path)) {
             return root.getResourceInternal(path, useClassLoaderResources);
         }
+
+        lookupCount.incrementAndGet();
 
         CachedResource cacheEntry = resourceCache.get(path);
 
@@ -204,9 +203,10 @@ public class Cache {
     }
 
     private boolean noCache(String path) {
-        // Don't cache resources used by the class loader (it has its own cache)
-        if (path.startsWith("/WEB-INF/classes") ||
-                path.startsWith("/WEB-INF/lib")) {
+        // Don't cache classes. The class loader handles this.
+        if (path.endsWith(".class") &&
+                (path.startsWith("/WEB-INF/classes/") ||
+                        path.startsWith("/WEB-INF/lib/"))) {
             return true;
         }
         return false;

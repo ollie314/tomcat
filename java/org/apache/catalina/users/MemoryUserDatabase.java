@@ -17,9 +17,9 @@
 package org.apache.catalina.users;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.util.HashMap;
@@ -34,6 +34,7 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.digester.AbstractObjectCreationFactory;
 import org.apache.tomcat.util.digester.Digester;
+import org.apache.tomcat.util.file.ConfigFileLoader;
 import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.Attributes;
 
@@ -138,7 +139,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Return the set of {@link Group}s defined in this user database.
+     * @return the set of {@link Group}s defined in this user database.
      */
     @Override
     public Iterator<Group> getGroups() {
@@ -151,7 +152,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Return the unique global identifier of this user database.
+     * @return the unique global identifier of this user database.
      */
     @Override
     public String getId() {
@@ -162,7 +163,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Return the relative or absolute pathname to the persistent storage file.
+     * @return the relative or absolute pathname to the persistent storage file.
      */
     public String getPathname() {
 
@@ -186,7 +187,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Returning the readonly status of the user database
+     * @return the readonly status of the user database
      */
     public boolean getReadonly() {
 
@@ -208,7 +209,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Return the set of {@link Role}s defined in this user database.
+     * @return the set of {@link Role}s defined in this user database.
      */
     @Override
     public Iterator<Role> getRoles() {
@@ -221,7 +222,7 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Return the set of {@link User}s defined in this user database.
+     * @return the set of {@link User}s defined in this user database.
      */
     @Override
     public Iterator<User> getUsers() {
@@ -394,40 +395,28 @@ public class MemoryUserDatabase implements UserDatabase {
                 groups.clear();
                 roles.clear();
 
-                // Construct a reader for the XML input file (if it exists)
-                File file = new File(pathname);
-                if (!file.isAbsolute()) {
-                    file = new File(System.getProperty(Globals.CATALINA_BASE_PROP),
-                                    pathname);
-                }
-                if (!file.exists()) {
-                    log.error(sm.getString("memoryUserDatabase.fileNotFound",
-                            file.getAbsolutePath()));
+                String pathName = getPathname();
+                try (InputStream is = ConfigFileLoader.getInputStream(getPathname())) {
+                    // Construct a digester to read the XML input file
+                    Digester digester = new Digester();
+                    try {
+                        digester.setFeature(
+                                "http://apache.org/xml/features/allow-java-encodings", true);
+                    } catch (Exception e) {
+                        log.warn(sm.getString("memoryUserDatabase.xmlFeatureEncoding"), e);
+                    }
+                    digester.addFactoryCreate("tomcat-users/group",
+                            new MemoryGroupCreationFactory(this), true);
+                    digester.addFactoryCreate("tomcat-users/role",
+                            new MemoryRoleCreationFactory(this), true);
+                    digester.addFactoryCreate("tomcat-users/user",
+                            new MemoryUserCreationFactory(this), true);
+
+                    // Parse the XML input to load this database
+                    digester.parse(is);
+                } catch (IOException ioe) {
+                    log.error(sm.getString("memoryUserDatabase.fileNotFound", pathName));
                     return;
-                }
-
-                // Construct a digester to read the XML input file
-                Digester digester = new Digester();
-                try {
-                    digester.setFeature(
-                            "http://apache.org/xml/features/allow-java-encodings",
-                            true);
-                } catch (Exception e) {
-                    log.warn(sm.getString("memoryUserDatabase.xmlFeatureEncoding"), e);
-                }
-                digester.addFactoryCreate
-                    ("tomcat-users/group",
-                     new MemoryGroupCreationFactory(this), true);
-                digester.addFactoryCreate
-                    ("tomcat-users/role",
-                     new MemoryRoleCreationFactory(this), true);
-                digester.addFactoryCreate
-                    ("tomcat-users/user",
-                     new MemoryUserCreationFactory(this), true);
-
-                // Parse the XML input file to load this database
-                try (FileInputStream fis =  new FileInputStream(file)) {
-                    digester.parse(fis);
                 }
             }
         }
@@ -496,6 +485,7 @@ public class MemoryUserDatabase implements UserDatabase {
     /**
      * Check for permissions to save this user database to persistent storage
      * location.
+     * @return <code>true</code> if the database is writable
      */
     public boolean isWriteable() {
 

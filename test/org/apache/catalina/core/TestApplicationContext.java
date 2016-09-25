@@ -185,10 +185,11 @@ public class TestApplicationContext extends TomcatBaseTest {
         bar.addLifecycleListener(new SetIdListener("bar"));
 
         Context ctx = tomcat.addContext("", null);
+        ctx.addLifecycleListener(new SetIdListener("ROOT"));
         ctx.setCrossContext(true);
 
         Tomcat.addServlet(ctx, "Bug57190Servlet", new Bug57190Servlet());
-        ctx.addServletMapping("/", "Bug57190Servlet");
+        ctx.addServletMappingDecoded("/", "Bug57190Servlet");
 
         tomcat.start();
 
@@ -200,7 +201,10 @@ public class TestApplicationContext extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("03-foo1"));
         Assert.assertTrue(body, body.contains("04-foo2"));
         Assert.assertTrue(body, body.contains("05-foo2"));
-        Assert.assertTrue(body, body.contains("06-null"));
+        Assert.assertTrue(body, body.contains("06-ROOT"));
+        Assert.assertTrue(body, body.contains("07-ROOT"));
+        Assert.assertTrue(body, body.contains("08-foo2"));
+        Assert.assertTrue(body, body.contains("09-ROOT"));
     }
 
 
@@ -219,7 +223,10 @@ public class TestApplicationContext extends TomcatBaseTest {
             pw.println("03-" + sc.getContext("/foo##1").getInitParameter("id"));
             pw.println("04-" + sc.getContext("/foo##2").getInitParameter("id"));
             pw.println("05-" + sc.getContext("/foo##3").getInitParameter("id"));
-            pw.println("06-" + sc.getContext("/unknown"));
+            pw.println("06-" + sc.getContext("/unknown").getInitParameter("id"));
+            pw.println("07-" + sc.getContext("/").getInitParameter("id"));
+            pw.println("08-" + sc.getContext("/foo/bar").getInitParameter("id"));
+            pw.println("09-" + sc.getContext("/football").getInitParameter("id"));
         }
     }
 
@@ -236,6 +243,88 @@ public class TestApplicationContext extends TomcatBaseTest {
         public void lifecycleEvent(LifecycleEvent event) {
             if (Lifecycle.CONFIGURE_START_EVENT.equals(event.getType())) {
                 ((Context) event.getSource()).getServletContext().setInitParameter("id", id);
+            }
+        }
+    }
+
+
+    /*
+     * The expectation is that you can set a context attribute on
+     * ServletContextB from ServletContextA and then access that attribute via
+     * a cross-context dispatch to ServletContextB.
+     */
+    @Test
+    public void testCrossContextSetAttribute() throws Exception {
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx2 = tomcat.addContext("/second", null);
+        GetAttributeServlet getAttributeServlet = new GetAttributeServlet();
+        Tomcat.addServlet(ctx2, "getAttributeServlet", getAttributeServlet);
+        ctx2.addServletMappingDecoded("/test", "getAttributeServlet");
+
+        // No file system docBase required
+        Context ctx1 = tomcat.addContext("/first", null);
+        ctx1.setCrossContext(true);
+        SetAttributeServlet setAttributeServlet = new SetAttributeServlet("/test", "/second");
+        Tomcat.addServlet(ctx1, "setAttributeServlet", setAttributeServlet);
+        ctx1.addServletMappingDecoded("/test", "setAttributeServlet");
+
+        tomcat.start();
+
+        ByteChunk bc = new ByteChunk();
+        int rc = getUrl("http://localhost:" + getPort() + "/first/test", bc, null);
+
+        Assert.assertEquals(200, rc);
+        Assert.assertEquals("01-PASS", bc.toString());
+    }
+
+
+    private static class SetAttributeServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+        private static final String ATTRIBUTE_NAME = "setAttributeTest";
+        private static final String ATTRIBUTE_VALUE = "abcde";
+
+        private final String targetContextPath;
+        private final String targetPath;
+
+        public SetAttributeServlet(String targetPath, String targetContextPath) {
+            this.targetPath = targetPath;
+            this.targetContextPath = targetContextPath;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            ServletContext sc;
+            if (targetContextPath == null) {
+                sc = req.getServletContext();
+            } else {
+                sc = req.getServletContext().getContext(targetContextPath);
+            }
+            sc.setAttribute(ATTRIBUTE_NAME, ATTRIBUTE_VALUE);
+            sc.getRequestDispatcher(targetPath).forward(req, resp);
+        }
+    }
+
+
+    private static class GetAttributeServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            PrintWriter pw = resp.getWriter();
+            String value = (String) req.getServletContext().getAttribute(
+                    SetAttributeServlet.ATTRIBUTE_NAME);
+            if (SetAttributeServlet.ATTRIBUTE_VALUE.equals(value)) {
+                pw.print("01-PASS");
+            } else {
+                pw.print("01-FAIL");
             }
         }
     }

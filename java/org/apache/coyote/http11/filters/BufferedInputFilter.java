@@ -59,6 +59,8 @@ public class BufferedInputFilter implements InputFilter {
     /**
      * Set the buffering limit. This should be reset every time the buffer is
      * used.
+     *
+     * @param limit The maximum number of bytes that will be buffered
      */
     public void setLimit(int limit) {
         if (buffered == null) {
@@ -78,7 +80,7 @@ public class BufferedInputFilter implements InputFilter {
     public void setRequest(Request request) {
         // save off the Request body
         try {
-            while (buffer.doRead(tempRead, request) >= 0) {
+            while (buffer.doRead(tempRead) >= 0) {
                 buffered.append(tempRead);
                 tempRead.recycle();
             }
@@ -93,7 +95,7 @@ public class BufferedInputFilter implements InputFilter {
      * Fills the given ByteChunk with the buffered request body.
      */
     @Override
-    public int doRead(ByteChunk chunk, Request request) throws IOException {
+    public int doRead(ByteChunk chunk) throws IOException {
         if (hasRead || buffered.getLength() <= 0) {
             return -1;
         }

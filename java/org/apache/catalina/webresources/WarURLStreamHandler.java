@@ -30,7 +30,11 @@ public class WarURLStreamHandler extends URLStreamHandler {
 
         // Only the path needs to be changed
         String path = "jar:" + spec.substring(4);
-        path = path.replaceFirst("\\^/", "!/");
+        if (path.contains("*/")) {
+            path = path.replaceFirst("\\*/", "!/");
+        } else {
+            path = path.replaceFirst("\\^/", "!/");
+        }
 
         setURL(u, u.getProtocol(), "", -1, null, null,
                 path, null, null);

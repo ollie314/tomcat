@@ -58,6 +58,9 @@ public class TestCustomSsl extends TomcatBaseTest {
 
         connector.setProperty("sslImplementationName",
                 "org.apache.tomcat.util.net.jsse.TesterBug50640SslImpl");
+
+        // This setting will break ssl configuration unless the custom
+        // implementation is used.
         connector.setProperty(TesterBug50640SslImpl.PROPERTY_NAME,
                 TesterBug50640SslImpl.PROPERTY_VALUE);
 
@@ -79,7 +82,7 @@ public class TestCustomSsl extends TomcatBaseTest {
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
             "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        assertTrue(res.toString().indexOf("<a href=\"../helloworld.html\">") > 0);
     }
 
     @Test

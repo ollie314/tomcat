@@ -48,7 +48,7 @@ import javax.servlet.descriptor.JspConfigDescriptor;
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.compiler.Localizer;
-import org.apache.jasper.util.ExceptionUtils;
+import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.tomcat.JarScanType;
 import org.apache.tomcat.util.descriptor.web.FragmentJarScannerCallback;
 import org.apache.tomcat.util.descriptor.web.WebXml;
@@ -79,7 +79,7 @@ public class JspCServletContext implements ServletContext {
     /**
      * Servlet context initialization parameters.
      */
-    private final ConcurrentHashMap<String,String> myParameters;
+    private final Map<String,String> myParameters = new ConcurrentHashMap<>();
 
 
     /**
@@ -119,14 +119,13 @@ public class JspCServletContext implements ServletContext {
      * @param validate      Should a validating parser be used to parse web.xml?
      * @param blockExternal Should external entities be blocked when parsing
      *                      web.xml?
-     * @throws JasperException
+     * @throws JasperException An error occurred building the merged web.xml
      */
     public JspCServletContext(PrintWriter aLogWriter, URL aResourceBaseURL,
             ClassLoader classLoader, boolean validate, boolean blockExternal)
             throws JasperException {
 
         myAttributes = new HashMap<>();
-        myParameters = new ConcurrentHashMap<>();
         myParameters.put(Constants.XML_BLOCK_EXTERNAL_INIT_PARAM,
                 String.valueOf(blockExternal));
         myLogWriter = aLogWriter;
@@ -249,7 +248,7 @@ public class JspCServletContext implements ServletContext {
      */
     @Override
     public Enumeration<String> getInitParameterNames() {
-        return myParameters.keys();
+        return Collections.enumeration(myParameters.keySet());
     }
 
 
@@ -301,19 +300,17 @@ public class JspCServletContext implements ServletContext {
      */
     @Override
     public String getRealPath(String path) {
-
         if (!myResourceBaseURL.getProtocol().equals("file"))
-            return (null);
+            return null;
         if (!path.startsWith("/"))
-            return (null);
+            return null;
         try {
-            return
-                (getResource(path).getFile().replace('/', File.separatorChar));
+            File f = new File(getResource(path).toURI());
+            return f.getAbsolutePath();
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -391,6 +388,9 @@ public class JspCServletContext implements ServletContext {
         if (!theBaseDir.exists() || !theBaseDir.isDirectory())
             return (thePaths);
         String theFiles[] = theBaseDir.list();
+        if (theFiles == null) {
+            return thePaths;
+        }
         for (int i = 0; i < theFiles.length; i++) {
             File testFile = new File(basePath + File.separator + theFiles[i]);
             if (testFile.isFile())

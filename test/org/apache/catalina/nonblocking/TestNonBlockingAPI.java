@@ -50,13 +50,9 @@ import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.catalina.valves.TesterAccessLogValve;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
 
 public class TestNonBlockingAPI extends TomcatBaseTest {
-
-    private static final Log log = LogFactory.getLog(TestNonBlockingAPI.class);
 
     private static final int CHUNK_SIZE = 1024 * 1024;
     private static final int WRITE_SIZE  = CHUNK_SIZE * 10;
@@ -104,7 +100,7 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         NBReadServlet servlet = new NBReadServlet(ignoreIsReady);
         String servletName = NBReadServlet.class.getName();
         Tomcat.addServlet(ctx, servletName, servlet);
-        ctx.addServletMapping("/", servletName);
+        ctx.addServletMappingDecoded("/", servletName);
 
         tomcat.start();
 
@@ -118,6 +114,15 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
 
     @Test
     public void testNonBlockingWrite() throws Exception {
+        testNonBlockingWriteInternal(false);
+    }
+
+    @Test
+    public void testNonBlockingWriteWithKeepAlive() throws Exception {
+        testNonBlockingWriteInternal(true);
+    }
+
+    private void testNonBlockingWriteInternal(boolean keepAlive) throws Exception {
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
@@ -125,23 +130,31 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         NBWriteServlet servlet = new NBWriteServlet();
         String servletName = NBWriteServlet.class.getName();
         Tomcat.addServlet(ctx, servletName, servlet);
-        ctx.addServletMapping("/", servletName);
+        ctx.addServletMappingDecoded("/", servletName);
         tomcat.getConnector().setProperty("socket.txBufSize", "1024");
         tomcat.start();
 
         SocketFactory factory = SocketFactory.getDefault();
         Socket s = factory.createSocket("localhost", getPort());
 
+        InputStream is = s.getInputStream();
+        byte[] buffer = new byte[8192];
+
         ByteChunk result = new ByteChunk();
+
         OutputStream os = s.getOutputStream();
+        if (keepAlive) {
+            os.write(("OPTIONS * HTTP/1.1\r\n" +
+                    "Host: localhost:" + getPort() + "\r\n" +
+                    "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+            os.flush();
+            is.read(buffer);
+        }
         os.write(("GET / HTTP/1.1\r\n" +
                 "Host: localhost:" + getPort() + "\r\n" +
                 "Connection: close\r\n" +
                 "\r\n").getBytes(StandardCharsets.ISO_8859_1));
         os.flush();
-
-        InputStream is = s.getInputStream();
-        byte[] buffer = new byte[8192];
 
         int read = 0;
         int readSinceLastPause = 0;
@@ -168,7 +181,7 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         int lineStart = 0;
         int lineEnd = resultString.indexOf('\n', 0);
         String line = resultString.substring(lineStart, lineEnd + 1);
-        Assert.assertEquals("HTTP/1.1 200 OK\r\n", line);
+        Assert.assertEquals("HTTP/1.1 200 \r\n", line);
 
         // Check headers - looking to see if response is chunked (it should be)
         boolean chunked = false;
@@ -273,7 +286,7 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         NBWriteServlet servlet = new NBWriteServlet();
         String servletName = NBWriteServlet.class.getName();
         Tomcat.addServlet(ctx, servletName, servlet);
-        ctx.addServletMapping("/", servletName);
+        ctx.addServletMappingDecoded("/", servletName);
         tomcat.getConnector().setProperty("socket.txBufSize", "1024");
         tomcat.start();
 
@@ -320,7 +333,7 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         int lineStart = 0;
         int lineEnd = resultString.indexOf('\n', 0);
         String line = resultString.substring(lineStart, lineEnd + 1);
-        Assert.assertEquals("HTTP/1.1 200 OK\r\n", line);
+        Assert.assertEquals("HTTP/1.1 200 \r\n", line);
 
         // Listeners are invoked and access valve entries created on a different
         // thread so give that thread a chance to complete its work.
@@ -356,7 +369,7 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
         NBReadWriteServlet servlet = new NBReadWriteServlet();
         String servletName = NBReadWriteServlet.class.getName();
         Tomcat.addServlet(ctx, servletName, servlet);
-        ctx.addServletMapping("/", servletName);
+        ctx.addServletMappingDecoded("/", servletName);
 
         tomcat.start();
 

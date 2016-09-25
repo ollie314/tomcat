@@ -25,7 +25,6 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.servlet.ServletException;
@@ -42,6 +41,7 @@ import static org.junit.Assert.fail;
 
 import org.junit.Test;
 
+import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.core.StandardHost;
@@ -99,8 +99,9 @@ public class TestTomcat extends TomcatBaseTest {
             String name = null;
 
             try {
-                Context initCtx = new InitialContext();
-                Context envCtx = (Context) initCtx.lookup("java:comp/env");
+                javax.naming.Context initCtx = new InitialContext();
+                javax.naming.Context envCtx =
+                        (javax.naming.Context) initCtx.lookup("java:comp/env");
                 name = (String) envCtx.lookup(JNDI_ENV_NAME);
             } catch (NamingException e) {
                 throw new IOException(e);
@@ -186,10 +187,10 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorld());
-        ctx.addServletMapping("/", "myServlet");
+        ctx.addServletMappingDecoded("/", "myServlet");
 
         tomcat.start();
 
@@ -203,14 +204,15 @@ public class TestTomcat extends TomcatBaseTest {
 
         File appDir = new File(getBuildDirectory(), "webapps/examples");
         // app dir is relative to server home
-        org.apache.catalina.Context ctxt  = tomcat.addWebapp(
+        Context ctxt = tomcat.addWebapp(
                 null, "/examples", appDir.getAbsolutePath());
         ctxt.addApplicationListener(WsContextListener.class.getName());
         tomcat.start();
 
         ByteChunk res = getUrl("http://localhost:" + getPort() +
                 "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        String text = res.toString();
+        assertTrue(text, text.indexOf("<a href=\"../helloworld.html\">") > 0);
     }
 
     @Test
@@ -219,7 +221,7 @@ public class TestTomcat extends TomcatBaseTest {
 
         File appDir = new File(getBuildDirectory(), "webapps/examples");
         // app dir is relative to server home
-        org.apache.catalina.Context ctxt  = tomcat.addWebapp(
+        Context ctxt = tomcat.addWebapp(
                 null, "/examples", appDir.getAbsolutePath());
         ctxt.addApplicationListener(WsContextListener.class.getName());
 
@@ -227,7 +229,8 @@ public class TestTomcat extends TomcatBaseTest {
 
         ByteChunk res = getUrl("http://localhost:" + getPort() +
                 "/examples/jsp/jsp2/el/basic-arithmetic.jsp");
-        assertTrue(res.toString().indexOf("<td>${(1==2) ? 3 : 4}</td>") > 0);
+        String text = res.toString();
+        assertTrue(text, text.indexOf("<td>${(1==2) ? 3 : 4}</td>") > 0);
     }
 
     @Test
@@ -235,10 +238,10 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorldSession());
-        ctx.addServletMapping("/", "myServlet");
+        ctx.addServletMappingDecoded("/", "myServlet");
 
         tomcat.start();
 
@@ -265,7 +268,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        Context ctx = tomcat.addContext("", null);
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -277,7 +280,7 @@ public class TestTomcat extends TomcatBaseTest {
         ctx.getNamingResources().addEnvironment(environment);
 
         Tomcat.addServlet(ctx, "jndiServlet", new HelloWorldJndi());
-        ctx.addServletMapping("/", "jndiServlet");
+        ctx.addServletMappingDecoded("/", "jndiServlet");
 
         tomcat.start();
 
@@ -293,7 +296,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        Context ctx = tomcat.addContext("", null);
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -307,10 +310,11 @@ public class TestTomcat extends TomcatBaseTest {
         ContextResourceLink link = new ContextResourceLink();
         link.setGlobal("globalTest");
         link.setName(HelloWorldJndi.JNDI_ENV_NAME);
+        link.setType("java.lang.String");
         ctx.getNamingResources().addResourceLink(link);
 
         Tomcat.addServlet(ctx, "jndiServlet", new HelloWorldJndi());
-        ctx.addServletMapping("/", "jndiServlet");
+        ctx.addServletMappingDecoded("/", "jndiServlet");
 
         tomcat.start();
 
@@ -320,7 +324,7 @@ public class TestTomcat extends TomcatBaseTest {
 
 
     /*
-     * Test for https://issues.apache.org/bugzilla/show_bug.cgi?id=47866
+     * Test for https://bz.apache.org/bugzilla/show_bug.cgi?id=47866
      */
     @Test
     public void testGetResource() throws Exception {
@@ -330,12 +334,12 @@ public class TestTomcat extends TomcatBaseTest {
 
         File appDir = new File(getBuildDirectory(), "webapps" + contextPath);
         // app dir is relative to server home
-        org.apache.catalina.Context ctx =
+        Context ctx =
             tomcat.addWebapp(null, "/examples", appDir.getAbsolutePath());
         ctx.addApplicationListener(WsContextListener.class.getName());
 
         Tomcat.addServlet(ctx, "testGetResource", new GetResource());
-        ctx.addServletMapping("/testGetResource", "testGetResource");
+        ctx.addServletMappingDecoded("/testGetResource", "testGetResource");
 
         tomcat.start();
 
@@ -371,11 +375,11 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        Context ctx = tomcat.addContext("", null);
 
         InitCount initCount = new InitCount();
         Tomcat.addServlet(ctx, "initCount", initCount);
-        ctx.addServletMapping("/", "initCount");
+        ctx.addServletMappingDecoded("/", "initCount");
 
         tomcat.start();
 
@@ -427,7 +431,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         File appFile = new File("test/deployment/context.war");
-        org.apache.catalina.Context context = tomcat.addWebapp(null,
+        Context context = tomcat.addWebapp(null,
                 "/test", appFile.getAbsolutePath());
 
         assertEquals(StandardContext.class.getName(), context.getClass()
@@ -461,7 +465,7 @@ public class TestTomcat extends TomcatBaseTest {
         }
 
         File appFile = new File("test/deployment/context.war");
-        org.apache.catalina.Context context = tomcat.addWebapp(null, "/test",
+        Context context = tomcat.addWebapp(null, "/test",
                 appFile.getAbsolutePath());
 
         assertEquals(ReplicatedContext.class.getName(), context.getClass()
@@ -478,7 +482,7 @@ public class TestTomcat extends TomcatBaseTest {
         }
 
         File appFile = new File("test/deployment/context.war");
-        org.apache.catalina.Context context = tomcat.addWebapp(host, "/test",
+        Context context = tomcat.addWebapp(host, "/test",
                 appFile.getAbsolutePath());
 
         assertEquals(ReplicatedContext.class.getName(), context.getClass()
@@ -490,7 +494,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext(null, "", null);
+        Context ctx = tomcat.addContext(null, "", null);
         assertEquals(StandardContext.class.getName(), ctx.getClass().getName());
     }
 
@@ -521,7 +525,7 @@ public class TestTomcat extends TomcatBaseTest {
         }
 
         // No file system docBase required
-        org.apache.catalina.Context ctx = tomcat.addContext(host, "", null);
+        Context ctx = tomcat.addContext(host, "", null);
         assertEquals(ReplicatedContext.class.getName(), ctx.getClass()
                 .getName());
     }

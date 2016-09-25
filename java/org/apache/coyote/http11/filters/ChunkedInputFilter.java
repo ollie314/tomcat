@@ -19,6 +19,8 @@ package org.apache.coyote.http11.filters;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.Set;
 
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
@@ -146,10 +148,14 @@ public class ChunkedInputFilter implements InputFilter {
     private boolean error;
 
 
+    private final Set<String> allowedTrailerHeaders;
+
     // ----------------------------------------------------------- Constructors
 
-    public ChunkedInputFilter(int maxTrailerSize, int maxExtensionSize, int maxSwallowSize) {
+    public ChunkedInputFilter(int maxTrailerSize, Set<String> allowedTrailerHeaders,
+            int maxExtensionSize, int maxSwallowSize) {
         this.trailingHeaders.setLimit(maxTrailerSize);
+        this.allowedTrailerHeaders = allowedTrailerHeaders;
         this.maxExtensionSize = maxExtensionSize;
         this.maxTrailerSize = maxTrailerSize;
         this.maxSwallowSize = maxSwallowSize;
@@ -158,17 +164,8 @@ public class ChunkedInputFilter implements InputFilter {
 
     // ---------------------------------------------------- InputBuffer Methods
 
-    /**
-     * Read bytes.
-     *
-     * @return If the filter does request length control, this value is
-     * significant; it should be the number of bytes consumed from the buffer,
-     * up until the end of the current request body, or the buffer length,
-     * whichever is greater. If the filter does not do request body length
-     * control, the returned value should be -1.
-     */
     @Override
-    public int doRead(ByteChunk chunk, Request req) throws IOException {
+    public int doRead(ByteChunk chunk) throws IOException {
         if (endChunk) {
             return -1;
         }
@@ -241,7 +238,7 @@ public class ChunkedInputFilter implements InputFilter {
         long swallowed = 0;
         int read = 0;
         // Consume extra bytes : parse the stream until the end chunk is found
-        while ((read = doRead(readChunk, null)) >= 0) {
+        while ((read = doRead(readChunk)) >= 0) {
             swallowed += read;
             if (maxSwallowSize > -1 && swallowed > maxSwallowSize) {
                 throwIOException(sm.getString("inputFilter.maxSwallow"));
@@ -308,10 +305,12 @@ public class ChunkedInputFilter implements InputFilter {
 
     /**
      * Read bytes from the previous buffer.
+     * @return The byte count which has been read
+     * @throws IOException Read error
      */
     protected int readBytes() throws IOException {
 
-        int nRead = buffer.doRead(readChunk, null);
+        int nRead = buffer.doRead(readChunk);
         pos = readChunk.getStart();
         lastValid = pos + nRead;
         buf = readChunk.getBytes();
@@ -330,6 +329,9 @@ public class ChunkedInputFilter implements InputFilter {
      * The letters before CRLF or ';' (whatever comes first) must be valid hex
      * digits. We should not parse F23IAMGONNAMESSTHISUP34CRLF as a valid
      * header according to the spec.
+     * @return <code>true</code> if the chunk header has been
+     *  successfully parsed
+     * @throws IOException Read error
      */
     protected boolean parseChunkHeader() throws IOException {
 
@@ -390,10 +392,6 @@ public class ChunkedInputFilter implements InputFilter {
         }
 
         remaining = result;
-        if (remaining < 0) {
-            return false;
-        }
-
         return true;
     }
 
@@ -404,6 +402,7 @@ public class ChunkedInputFilter implements InputFilter {
      * @param   tolerant    Should tolerant parsing (LF and CRLF) be used? This
      *                      is recommended (RFC2616, section 19.3) for message
      *                      headers.
+     * @throws IOException An error occurred parsing CRLF
      */
     protected void parseCRLF(boolean tolerant) throws IOException {
 
@@ -438,6 +437,7 @@ public class ChunkedInputFilter implements InputFilter {
 
     /**
      * Parse end chunk data.
+     * @throws IOException Error propagation
      */
     protected void parseEndChunk() throws IOException {
         // Handle optional trailer headers
@@ -469,7 +469,7 @@ public class ChunkedInputFilter implements InputFilter {
         }
 
         // Mark the current buffer position
-        int start = trailingHeaders.getEnd();
+        int startPos = trailingHeaders.getEnd();
 
         //
         // Reading the header name
@@ -500,11 +500,7 @@ public class ChunkedInputFilter implements InputFilter {
             pos++;
 
         }
-        MessageBytes headerValue = headers.addValue(trailingHeaders.getBytes(),
-                start, trailingHeaders.getEnd() - start);
-
-        // Mark the current buffer position
-        start = trailingHeaders.getEnd();
+        int colonPos = trailingHeaders.getEnd();
 
         //
         // Reading the header value (which can be spanned over multiple lines)
@@ -592,9 +588,16 @@ public class ChunkedInputFilter implements InputFilter {
 
         }
 
-        // Set the header value
-        headerValue.setBytes(trailingHeaders.getBytes(), start,
-                lastSignificantChar - start);
+        String headerName = new String(trailingHeaders.getBytes(), startPos,
+                colonPos - startPos, StandardCharsets.ISO_8859_1);
+
+        if (allowedTrailerHeaders.contains(headerName.toLowerCase(Locale.ENGLISH))) {
+            MessageBytes headerValue = headers.addValue(headerName);
+
+            // Set the header value
+            headerValue.setBytes(trailingHeaders.getBytes(), colonPos,
+                    lastSignificantChar - colonPos);
+        }
 
         return true;
     }

@@ -16,13 +16,12 @@
  */
 package org.apache.coyote.ajp;
 
-import java.nio.ByteBuffer;
-
-import javax.servlet.http.HttpUpgradeHandler;
-
 import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.Processor;
+import org.apache.coyote.UpgradeProtocol;
+import org.apache.coyote.UpgradeToken;
 import org.apache.tomcat.util.net.AbstractEndpoint;
+import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -47,6 +46,9 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
         // AJP does not use Send File
         getEndpoint().setUseSendfile(false);
+        ConnectionHandler<S> cHandler = new ConnectionHandler<>(this);
+        setHandler(cHandler);
+        getEndpoint().setHandler(cHandler);
     }
 
 
@@ -67,17 +69,67 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     }
 
 
+    /**
+     * {@inheritDoc}
+     *
+     * AJP does not support protocol negotiation so this always returns null.
+     */
+    @Override
+    protected UpgradeProtocol getNegotiatedProtocol(String name) {
+        return null;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * AJP does not support protocol upgrade so this always returns null.
+     */
+    @Override
+    protected UpgradeProtocol getUpgradeProtocol(String name) {
+        return null;
+    }
+
     // ------------------------------------------------- AJP specific properties
     // ------------------------------------------ managed in the ProtocolHandler
 
     /**
-     * Should authentication be done in the native webserver layer,
+     * Send AJP flush packet when flushing.
+     * An flush packet is a zero byte AJP13 SEND_BODY_CHUNK
+     * packet. mod_jk and mod_proxy_ajp interprete this as
+     * a request to flush data to the client.
+     * AJP always does flush at the and of the response, so if
+     * it is not important, that the packets get streamed up to
+     * the client, do not use extra flush packets.
+     * For compatibility and to stay on the safe side, flush
+     * packets are enabled by default.
+     */
+    protected boolean ajpFlush = true;
+    public boolean getAjpFlush() { return ajpFlush; }
+    public void setAjpFlush(boolean ajpFlush) {
+        this.ajpFlush = ajpFlush;
+    }
+
+
+    /**
+     * Should authentication be done in the native web server layer,
      * or in the Servlet container ?
      */
     private boolean tomcatAuthentication = true;
     public boolean getTomcatAuthentication() { return tomcatAuthentication; }
     public void setTomcatAuthentication(boolean tomcatAuthentication) {
         this.tomcatAuthentication = tomcatAuthentication;
+    }
+
+
+    /**
+     * Should authentication be done in the native web server layer and
+     * authorization in the Servlet container?
+     */
+    private boolean tomcatAuthorization = false;
+    public boolean getTomcatAuthorization() { return tomcatAuthorization; }
+    public void setTomcatAuthorization(boolean tomcatAuthorization) {
+        this.tomcatAuthorization = tomcatAuthorization;
     }
 
 
@@ -103,55 +155,52 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
     }
 
-    protected void configureProcessor(AjpProcessor<S> processor) {
+
+    // --------------------------------------------- SSL is not supported in AJP
+
+    @Override
+    public void addSslHostConfig(SSLHostConfig sslHostConfig) {
+        getLog().warn(sm.getString("ajpprotocol.noSSL", sslHostConfig.getHostName()));
+    }
+
+
+    @Override
+    public SSLHostConfig[] findSslHostConfigs() {
+        return new SSLHostConfig[0];
+    }
+
+
+    @Override
+    public void addUpgradeProtocol(UpgradeProtocol upgradeProtocol) {
+        getLog().warn(sm.getString("ajpprotocol.noUpgrade", upgradeProtocol.getClass().getName()));
+    }
+
+
+    @Override
+    public UpgradeProtocol[] findUpgradeProtocols() {
+        return new UpgradeProtocol[0];
+    }
+
+
+    @Override
+    protected Processor createProcessor() {
+        AjpProcessor processor = new AjpProcessor(getPacketSize(), getEndpoint());
         processor.setAdapter(getAdapter());
+        processor.setAjpFlush(getAjpFlush());
         processor.setTomcatAuthentication(getTomcatAuthentication());
+        processor.setTomcatAuthorization(getTomcatAuthorization());
         processor.setRequiredSecret(requiredSecret);
         processor.setKeepAliveTimeout(getKeepAliveTimeout());
         processor.setClientCertProvider(getClientCertProvider());
+        processor.setMaxCookieCount(getMaxCookieCount());
+        return processor;
     }
 
-    protected abstract static class AbstractAjpConnectionHandler<S>
-            extends AbstractConnectionHandler<S,AjpProcessor<S>> {
 
-        private final AbstractAjpProtocol<S> proto;
-
-        public AbstractAjpConnectionHandler(AbstractAjpProtocol<S> proto) {
-            this.proto = proto;
-        }
-
-        @Override
-        protected AbstractAjpProtocol<S> getProtocol() {
-            return proto;
-        }
-
-
-        @Override
-        protected AjpProcessor<S> createProcessor() {
-            AjpProcessor<S> processor =
-                    new AjpProcessor<>(proto.getPacketSize(), proto.getEndpoint());
-            proto.configureProcessor(processor);
-            register(processor);
-            return processor;
-        }
-
-        @Override
-        protected void initSsl(SocketWrapperBase<S> socket, Processor<S> processor) {
-            // NOOP for AJP
-        }
-
-        @Override
-        protected void longPoll(SocketWrapperBase<S> socket,
-                Processor<S> processor) {
-            // Same requirements for all AJP connectors
-            socket.setAsync(true);
-        }
-
-        @Override
-        protected AjpProcessor<S> createUpgradeProcessor(SocketWrapperBase<S> socket,
-                ByteBuffer leftoverInput, HttpUpgradeHandler httpUpgradeHandler) {
-            // TODO should fail - throw IOE
-            return null;
-        }
+    @Override
+    protected Processor createUpgradeProcessor(SocketWrapperBase<?> socket,
+            UpgradeToken upgradeToken) {
+        throw new IllegalStateException(sm.getString("ajpprotocol.noUpgradeHandler",
+                upgradeToken.getHttpUpgradeHandler().getClass().getName()));
     }
 }

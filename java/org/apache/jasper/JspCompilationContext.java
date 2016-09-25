@@ -39,8 +39,8 @@ import org.apache.jasper.servlet.JasperLoader;
 import org.apache.jasper.servlet.JspServletWrapper;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
-import org.apache.tomcat.util.scan.Jar;
 
 /**
  * A place holder for various things that are used through out the JSP
@@ -89,7 +89,7 @@ public class JspCompilationContext {
     private final boolean isTagFile;
     private boolean protoTypeMode;
     private TagInfo tagInfo;
-    private final Jar tagJar;
+    private Jar tagJar;
 
     // jspURI _must_ be relative to the context
     public JspCompilationContext(String jspUri, Options options,
@@ -115,7 +115,7 @@ public class JspCompilationContext {
 
         String baseURI = jspUri.substring(0, jspUri.lastIndexOf('/') + 1);
         // hack fix for resolveRelativeURI
-        if (baseURI == null) {
+        if (baseURI.isEmpty()) {
             baseURI = "/";
         } else if (baseURI.charAt(0) != '/') {
             // strip the base slash since it will be combined with the
@@ -141,7 +141,7 @@ public class JspCompilationContext {
     /** ---------- Class path and loader ---------- */
 
     /**
-     * The classpath that is passed off to the Java compiler.
+     * @return the classpath that is passed off to the Java compiler.
      */
     public String getClassPath() {
         if( classPath != null ) {
@@ -152,6 +152,7 @@ public class JspCompilationContext {
 
     /**
      * The classpath that is passed off to the Java compiler.
+     * @param classPath The class path to use
      */
     public void setClassPath(String classPath) {
         this.classPath = classPath;
@@ -160,6 +161,7 @@ public class JspCompilationContext {
     /**
      * What class loader to use for loading classes while compiling
      * this JSP?
+     * @return the class loader used to load all compiled classes
      */
     public ClassLoader getClassLoader() {
         if( loader != null ) {
@@ -182,12 +184,18 @@ public class JspCompilationContext {
         return jspLoader;
     }
 
+    public void clearJspLoader() {
+        jspLoader = null;
+    }
+
+
     /** ---------- Input/Output  ---------- */
 
     /**
      * The output directory to generate code into.  The output directory
      * is make up of the scratch directory, which is provide in Options,
      * plus the directory derived from the package name.
+     * @return the output directory in which the generated sources are placed
      */
     public String getOutputDir() {
         if (outputDir == null) {
@@ -201,6 +209,7 @@ public class JspCompilationContext {
      * Create a "Compiler" object based on some init param data. This
      * is not done yet. Right now we're just hardcoding the actual
      * compilers that are created.
+     * @return the Java compiler wrapper
      */
     public Compiler createCompiler() {
         if (jspCompiler != null ) {
@@ -258,6 +267,8 @@ public class JspCompilationContext {
     /**
      * Get the full value of a URI relative to this compilations context
      * uses current file as the base.
+     * @param uri The relative URI
+     * @return absolute URI
      */
     public String resolveRelativeUri(String uri) {
         // sometimes we get uri's massaged from File(String), so check for
@@ -272,6 +283,7 @@ public class JspCompilationContext {
     /**
      * Gets a resource as a stream, relative to the meanings of this
      * context's implementation.
+     * @param res the resource to look for
      * @return a null if the resource cannot be found or represented
      *         as an InputStream.
      */
@@ -292,6 +304,8 @@ public class JspCompilationContext {
     /**
      * Gets the actual path of a URI relative to the context of
      * the compilation.
+     * @param path The webapp path
+     * @return the corresponding path in the filesystem
      */
     public String getRealPath(String path) {
         if (context != null) {
@@ -305,9 +319,14 @@ public class JspCompilationContext {
      * JspCompilationContext was created is packaged, or null if this
      * JspCompilationContext does not correspond to a tag file, or if the
      * corresponding tag file is not packaged in a JAR.
+     * @return a JAR file
      */
     public Jar getTagFileJar() {
         return this.tagJar;
+    }
+
+    public void setTagFileJar(Jar tagJar) {
+        this.tagJar = tagJar;
     }
 
     /* ==================== Common implementation ==================== */
@@ -315,6 +334,7 @@ public class JspCompilationContext {
     /**
      * Just the class name (does not include package name) of the
      * generated class.
+     * @return the class name
      */
     public String getServletClassName() {
 
@@ -342,12 +362,19 @@ public class JspCompilationContext {
     /**
      * Path of the JSP URI. Note that this is not a file name. This is
      * the context rooted URI of the JSP file.
+     * @return the path to the JSP
      */
     public String getJspFile() {
         return jspUri;
     }
 
+
     public Long getLastModified(String resource) {
+        return getLastModified(resource, tagJar);
+    }
+
+
+    public Long getLastModified(String resource, Jar tagJar) {
         long result = -1;
         URLConnection uc = null;
         try {
@@ -409,9 +436,10 @@ public class JspCompilationContext {
     }
 
     /**
-     * True if we are compiling a tag file in prototype mode.
-     * ie we only generate codes with class for the tag handler with empty
-     * method bodies.
+     * @return <code>true</code> if we are compiling a tag file
+     *  in prototype mode.
+     *  ie we only generate codes with class for the tag handler with empty
+     *  method bodies.
      */
     public boolean isPrototypeMode() {
         return protoTypeMode;
@@ -425,6 +453,7 @@ public class JspCompilationContext {
      * Package name for the generated class is make up of the base package
      * name, which is user settable, and the derived package name.  The
      * derived package name directly mirrors the file hierarchy of the JSP page.
+     * @return the package name
      */
     public String getServletPackageName() {
         if (isTagFile()) {
@@ -455,13 +484,14 @@ public class JspCompilationContext {
 
     /**
      * The package name into which the servlet class is generated.
+     * @param servletPackageName The package name to use
      */
     public void setServletPackageName(String servletPackageName) {
         this.basePackageName = servletPackageName;
     }
 
     /**
-     * Full path name of the Java file into which the servlet is being
+     * @return Full path name of the Java file into which the servlet is being
      * generated.
      */
     public String getServletJavaFileName() {
@@ -472,7 +502,7 @@ public class JspCompilationContext {
     }
 
     /**
-     * Get hold of the Options object for this context.
+     * @return the Options object for this context.
      */
     public Options getOptions() {
         return options;
@@ -487,7 +517,7 @@ public class JspCompilationContext {
     }
 
     /**
-     * Path of the Java file relative to the work directory.
+     * @return the path of the Java file relative to the work directory.
      */
     public String getJavaPath() {
 
@@ -513,7 +543,7 @@ public class JspCompilationContext {
     }
 
     /**
-     * Where is the servlet being generated?
+     * @return the writer that is used to write the generated Servlet source.
      */
     public ServletWriter getWriter() {
         return writer;
@@ -525,7 +555,7 @@ public class JspCompilationContext {
 
     /**
      * Gets the 'location' of the TLD associated with the given taglib 'uri'.
-     *
+     * @param uri The taglib URI
      * @return An array of two Strings: The first element denotes the real
      * path to the TLD. If the path to the TLD points to a jar file, then the
      * second element denotes the name of the TLD entry in the jar file.
@@ -537,7 +567,7 @@ public class JspCompilationContext {
     }
 
     /**
-     * Are we keeping generated code around?
+     * @return <code>true</code> if generated code is kept.
      */
     public boolean keepGenerated() {
         return getOptions().getKeepGenerated();

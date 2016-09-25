@@ -22,6 +22,7 @@ import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.io.WriteAbortedException;
 import java.security.AccessController;
 import java.security.Principal;
 import java.security.PrivilegedAction;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.servlet.ServletContext;
@@ -95,8 +97,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
         if (activityCheck == null) {
             ACTIVITY_CHECK = STRICT_SERVLET_COMPLIANCE;
         } else {
-            ACTIVITY_CHECK =
-                Boolean.valueOf(activityCheck).booleanValue();
+            ACTIVITY_CHECK = Boolean.parseBoolean(activityCheck);
         }
 
         String lastAccessAtStart = System.getProperty(
@@ -104,8 +105,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
         if (lastAccessAtStart == null) {
             LAST_ACCESS_AT_START = STRICT_SERVLET_COMPLIANCE;
         } else {
-            LAST_ACCESS_AT_START =
-                Boolean.valueOf(lastAccessAtStart).booleanValue();
+            LAST_ACCESS_AT_START = Boolean.parseBoolean(lastAccessAtStart);
         }
     }
 
@@ -141,17 +141,9 @@ public class StandardSession implements HttpSession, Session, Serializable {
 
 
     /**
-     * The dummy attribute value serialized when a NotSerializableException is
-     * encountered in <code>writeObject()</code>.
-     */
-    protected static final String NOT_SERIALIZED =
-        "___NOT_SERIALIZABLE_EXCEPTION___";
-
-
-    /**
      * The collection of user data attributes associated with this Session.
      */
-    protected Map<String, Object> attributes = new ConcurrentHashMap<>();
+    protected ConcurrentMap<String, Object> attributes = new ConcurrentHashMap<>();
 
 
     /**
@@ -167,15 +159,6 @@ public class StandardSession implements HttpSession, Session, Serializable {
      * January 1, 1970 GMT.
      */
     protected long creationTime = 0L;
-
-
-    /**
-     * Set of attribute names which are not allowed to be persisted.
-     */
-    protected static final String[] excludedAttributes = {
-        Globals.SUBJECT_ATTR,
-        Globals.GSS_CREDENTIAL_ATTR
-    };
 
 
     /**
@@ -222,13 +205,13 @@ public class StandardSession implements HttpSession, Session, Serializable {
      * the servlet container may invalidate this session.  A negative time
      * indicates that the session should never time out.
      */
-    protected int maxInactiveInterval = -1;
+    protected volatile int maxInactiveInterval = -1;
 
 
     /**
      * Flag indicating whether this session is new or not.
      */
-    protected boolean isNew = false;
+    protected volatile boolean isNew = false;
 
 
     /**
@@ -256,8 +239,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(StandardSession.class);
 
 
     /**
@@ -563,9 +545,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
      */
     @Override
     public Manager getManager() {
-
-        return (this.manager);
-
+        return this.manager;
     }
 
 
@@ -576,9 +556,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
      */
     @Override
     public void setManager(Manager manager) {
-
         this.manager = manager;
-
     }
 
 
@@ -1155,15 +1133,11 @@ public class StandardSession implements HttpSession, Session, Serializable {
      */
     @Override
     public ServletContext getServletContext() {
-
-        if (manager == null)
-            return (null);
+        if (manager == null) {
+            return null;
+        }
         Context context = manager.getContext();
-        if (context == null)
-            return (null);
-        else
-            return (context.getServletContext());
-
+        return context.getServletContext();
     }
 
 
@@ -1472,13 +1446,15 @@ public class StandardSession implements HttpSession, Session, Serializable {
         }
 
         // Validate our current state
-        if (!isValidInternal())
+        if (!isValidInternal()) {
             throw new IllegalStateException(sm.getString(
                     "standardSession.setAttribute.ise", getIdInternal()));
-        if ((manager != null) && manager.getDistributable() &&
-          !isAttributeDistributable(name, value))
-            throw new IllegalArgumentException
-                (sm.getString("standardSession.setAttribute.iae", name));
+        }
+        if ((manager != null) && manager.getContext().getDistributable() &&
+                !isAttributeDistributable(name, value) && !exclude(name, value)) {
+            throw new IllegalArgumentException(sm.getString(
+                    "standardSession.setAttribute.iae", name));
+        }
         // Construct an event with the new value
         HttpSessionBindingEvent event = null;
 
@@ -1572,7 +1548,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
 
 
     /**
-     * Return the <code>isValid</code> flag for this session without any expiration
+     * @return the <code>isValid</code> flag for this session without any expiration
      * check.
      */
     protected boolean isValidInternal() {
@@ -1580,15 +1556,14 @@ public class StandardSession implements HttpSession, Session, Serializable {
     }
 
     /**
-     * Check whether the Object can be distributed. This implementation
-     * simply checks for serializability. Derived classes might use other
-     * distribution technology not based on serialization and can extend
-     * this check.
-     * @param name The name of the attribute to check
-     * @param value The value of the attribute to check
-     * @return true if the attribute is distributable, false otherwise
+     * {@inheritDoc}
+     * <p>
+     * This implementation simply checks the value for serializability.
+     * Sub-classes might use other distribution technology not based on
+     * serialization and can override this check.
      */
-    protected boolean isAttributeDistributable(String name, Object value) {
+    @Override
+    public boolean isAttributeDistributable(String name, Object value) {
         return value instanceof Serializable;
     }
 
@@ -1631,12 +1606,24 @@ public class StandardSession implements HttpSession, Session, Serializable {
         isValid = true;
         for (int i = 0; i < n; i++) {
             String name = (String) stream.readObject();
-            Object value = stream.readObject();
-            if ((value instanceof String) && (value.equals(NOT_SERIALIZED)))
-                continue;
+            final Object value;
+            try {
+                value = stream.readObject();
+            } catch (WriteAbortedException wae) {
+                if (wae.getCause() instanceof NotSerializableException) {
+                    // Skip non serializable attributes
+                    continue;
+                }
+                throw wae;
+            }
             if (manager.getContext().getLogger().isDebugEnabled())
                 manager.getContext().getLogger().debug("  loading attribute '" + name +
                     "' with value '" + value + "'");
+            // Handle the case where the filter configuration was changed while
+            // the web application was stopped.
+            if (exclude(name, value)) {
+                continue;
+            }
             attributes.put(name, value);
         }
         isValid = isValidSave;
@@ -1690,10 +1677,9 @@ public class StandardSession implements HttpSession, Session, Serializable {
         ArrayList<Object> saveValues = new ArrayList<>();
         for (int i = 0; i < keys.length; i++) {
             Object value = attributes.get(keys[i]);
-            if (value == null)
+            if (value == null) {
                 continue;
-            else if ( (value instanceof Serializable)
-                    && (!exclude(keys[i]) )) {
+            } else if (isAttributeDistributable(keys[i], value) && !exclude(keys[i], value)) {
                 saveNames.add(keys[i]);
                 saveValues.add(value);
             } else {
@@ -1709,18 +1695,11 @@ public class StandardSession implements HttpSession, Session, Serializable {
             try {
                 stream.writeObject(saveValues.get(i));
                 if (manager.getContext().getLogger().isDebugEnabled())
-                    manager.getContext().getLogger().debug
-                        ("  storing attribute '" + saveNames.get(i) +
-                        "' with value '" + saveValues.get(i) + "'");
+                    manager.getContext().getLogger().debug(
+                            "  storing attribute '" + saveNames.get(i) + "' with value '" + saveValues.get(i) + "'");
             } catch (NotSerializableException e) {
-                manager.getContext().getLogger().warn
-                    (sm.getString("standardSession.notSerializable",
-                     saveNames.get(i), id), e);
-                stream.writeObject(NOT_SERIALIZED);
-                if (manager.getContext().getLogger().isDebugEnabled())
-                    manager.getContext().getLogger().debug
-                       ("  storing attribute '" + saveNames.get(i) +
-                        "' with value NOT_SERIALIZED");
+                manager.getContext().getLogger().warn(
+                        sm.getString("standardSession.notSerializable", saveNames.get(i), id), e);
             }
         }
 
@@ -1728,17 +1707,38 @@ public class StandardSession implements HttpSession, Session, Serializable {
 
 
     /**
-     * Exclude standard attributes that cannot be serialized.
-     * @param name the attribute's name
+     * Should the given session attribute be excluded? This implementation
+     * checks:
+     * <ul>
+     * <li>{@link Constants#excludedAttributeNames}</li>
+     * <li>{@link Manager#willAttributeDistribute(String, Object)}</li>
+     * </ul>
+     * Note: This method deliberately does not check
+     *       {@link #isAttributeDistributable(String, Object)} which is kept
+     *       separate to support the checks required in
+     *       {@link #setAttribute(String, Object, boolean)}
+     *
+     * @param name  The attribute name
+     * @param value The attribute value
+     *
+     * @return {@code true} if the attribute should be excluded from
+     *         distribution, otherwise {@code false}
      */
-    protected boolean exclude(String name){
-
-        for (int i = 0; i < excludedAttributes.length; i++) {
-            if (name.equalsIgnoreCase(excludedAttributes[i]))
-                return true;
+    protected boolean exclude(String name, Object value) {
+        if (Constants.excludedAttributeNames.contains(name)) {
+            return true;
         }
 
-        return false;
+        // Manager is required for remaining check
+        Manager manager = getManager();
+        if (manager == null) {
+            // Manager may be null during replication of new sessions in a
+            // cluster. Avoid the NPE.
+            return false;
+        }
+
+        // Last check so use a short-cut
+        return !manager.willAttributeDistribute(name, value);
     }
 
 
@@ -1769,7 +1769,7 @@ public class StandardSession implements HttpSession, Session, Serializable {
 
 
     /**
-     * Return the names of all currently defined session attributes
+     * @return the names of all currently defined session attributes
      * as an array of Strings.  If there are no defined attributes, a
      * zero-length array is returned.
      */

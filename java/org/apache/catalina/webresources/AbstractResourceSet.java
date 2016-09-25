@@ -16,6 +16,8 @@
  */
 package org.apache.catalina.webresources;
 
+import java.util.jar.Manifest;
+
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.WebResourceRoot;
@@ -32,10 +34,10 @@ public abstract class AbstractResourceSet extends LifecycleBase
     private String webAppMount;
     private boolean classLoaderOnly;
     private boolean staticOnly;
+    private Manifest manifest;
 
 
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AbstractResourceSet.class);
 
 
     protected final void checkPath(String path) {
@@ -111,6 +113,14 @@ public abstract class AbstractResourceSet extends LifecycleBase
         this.staticOnly = staticOnly;
     }
 
+    protected final void setManifest(Manifest manifest) {
+        this.manifest = manifest;
+    }
+
+    protected final Manifest getManifest() {
+        return manifest;
+    }
+
 
     //-------------------------------------------------------- Lifecycle methods
     @Override
@@ -125,6 +135,6 @@ public abstract class AbstractResourceSet extends LifecycleBase
 
     @Override
     protected final void destroyInternal() throws LifecycleException {
-        // NO-OP
+        gc();
     }
 }

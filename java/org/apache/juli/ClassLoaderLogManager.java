@@ -86,7 +86,7 @@ public class ClassLoaderLogManager extends LogManager {
      * application redeployment.
      */
     protected final Map<ClassLoader, ClassLoaderLogInfo> classLoaderLoggers =
-        new WeakHashMap<>();
+            new WeakHashMap<>(); // Guarded by this
 
 
     /**
@@ -206,7 +206,7 @@ public class ClassLoaderLogManager extends LogManager {
         // Unlike java.util.logging, the default is to not delegate if a list of handlers
         // has been specified for the logger.
         String useParentHandlersString = getProperty(loggerName + ".useParentHandlers");
-        if (Boolean.valueOf(useParentHandlersString).booleanValue()) {
+        if (Boolean.parseBoolean(useParentHandlersString)) {
             logger.setUseParentHandlers(true);
         }
 
@@ -273,7 +273,7 @@ public class ClassLoaderLogManager extends LogManager {
     }
 
 
-    private String findProperty(String name) {
+    private synchronized String findProperty(String name) {
         ClassLoader classLoader = Thread.currentThread()
                 .getContextClassLoader();
         ClassLoaderLogInfo info = getClassLoaderInfo(classLoader);
@@ -343,7 +343,7 @@ public class ClassLoaderLogManager extends LogManager {
     /**
      * Shuts down the logging system.
      */
-    public void shutdown() {
+    public synchronized void shutdown() {
         // The JVM is being shutdown. Make sure all loggers for all class
         // loaders are shutdown
         for (ClassLoaderLogInfo clLogInfo : classLoaderLoggers.values()) {
@@ -386,8 +386,9 @@ public class ClassLoaderLogManager extends LogManager {
      *
      * @param classLoader The classloader for which we will retrieve or build the
      *                    configuration
+     * @return the log configuration
      */
-    protected ClassLoaderLogInfo getClassLoaderInfo(ClassLoader classLoader) {
+    protected synchronized ClassLoaderLogInfo getClassLoaderInfo(ClassLoader classLoader) {
 
         if (classLoader == null) {
             classLoader = ClassLoader.getSystemClassLoader();
@@ -415,10 +416,10 @@ public class ClassLoaderLogManager extends LogManager {
     /**
      * Read configuration for the specified classloader.
      *
-     * @param classLoader
-     * @throws IOException Error
+     * @param classLoader The classloader
+     * @throws IOException Error reading configuration
      */
-    protected void readConfiguration(ClassLoader classLoader)
+    protected synchronized void readConfiguration(ClassLoader classLoader)
         throws IOException {
 
         InputStream is = null;
@@ -516,7 +517,7 @@ public class ClassLoaderLogManager extends LogManager {
      * @param classLoader for which the configuration will be loaded
      * @throws IOException If something wrong happens during loading
      */
-    protected void readConfiguration(InputStream is, ClassLoader classLoader)
+    protected synchronized void readConfiguration(InputStream is, ClassLoader classLoader)
         throws IOException {
 
         ClassLoaderLogInfo info = classLoaderLoggers.get(classLoader);
@@ -584,8 +585,8 @@ public class ClassLoaderLogManager extends LogManager {
     /**
      * Set parent child relationship between the two specified loggers.
      *
-     * @param logger
-     * @param parent
+     * @param logger The logger
+     * @param parent The parent logger
      */
     protected static void doSetParentLogger(final Logger logger,
             final Logger parent) {
@@ -663,9 +664,9 @@ public class ClassLoaderLogManager extends LogManager {
     protected static final class LogNode {
         Logger logger;
 
-        protected final Map<String, LogNode> children = new HashMap<>();
+        final Map<String, LogNode> children = new HashMap<>();
 
-        protected final LogNode parent;
+        final LogNode parent;
 
         LogNode(final LogNode parent, final Logger logger) {
             this.parent = parent;

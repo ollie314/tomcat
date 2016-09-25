@@ -16,6 +16,7 @@
  */
 package org.apache.tomcat.websocket;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.CompletionHandler;
@@ -31,12 +32,12 @@ public class WsFrameClient extends WsFrameBase {
 
     private final Log log = LogFactory.getLog(WsFrameClient.class);
     private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
+            StringManager.getManager(WsFrameClient.class);
 
     private final AsyncChannelWrapper channel;
     private final CompletionHandler<Integer,Void> handler;
     // Not final as it may need to be re-sized
-    private ByteBuffer response;
+    private volatile ByteBuffer response;
 
     public WsFrameClient(ByteBuffer response, AsyncChannelWrapper channel,
             WsSession wsSession, Transformation transformation) {
@@ -104,11 +105,27 @@ public class WsFrameClient extends WsFrameBase {
     }
 
 
+    @Override
+    protected Log getLog() {
+        return log;
+    }
+
+
     private class WsFrameClientCompletionHandler
             implements CompletionHandler<Integer,Void> {
 
         @Override
         public void completed(Integer result, Void attachment) {
+            if (result.intValue() == -1) {
+                // BZ 57762. A dropped connection will get reported as EOF
+                // rather than as an error so handle it here.
+                if (isOpen()) {
+                    // No close frame was received
+                    close(new EOFException());
+                }
+                // No data to process
+                return;
+            }
             response.flip();
             try {
                 processSocketRead();
@@ -119,7 +136,7 @@ public class WsFrameClient extends WsFrameBase {
                 // continuing to send a message after the server sent a close
                 // control message.
                 if (isOpen()) {
-                    log.debug(sm.getString("wsFrameClient.ioe", e));
+                    log.debug(sm.getString("wsFrameClient.ioe"), e);
                     close(e);
                 }
             }

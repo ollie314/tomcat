@@ -17,6 +17,7 @@
 package org.apache.tomcat.util.http;
 
 import java.io.IOException;
+import java.util.Enumeration;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.Cookie;
@@ -48,8 +49,13 @@ public class TestCookieParsing extends TomcatBaseTest {
     private static final String COOKIES_WITH_SEPS_TRUNC = "name=val";
 
     private static final String[] COOKIES_WITH_QUOTES = new String[] {
-            "name=\"val\\\"ue\"" };
-    private static final String COOKIES_WITH_QUOTES_MODIFIED = "name=\"val\"uee\"";
+            "name=\"val\\\"ue\"", "name=\"value\"" };
+
+    private static final String[] COOKIES_V1 = new String[] {
+            "$Version=1;name=\"val ue\"", "$Version=1;name=\"val\tue\""};
+
+    private static final String COOKIES_V1_CONCAT = "name=\"val ue\"name=\"val\tue\"";
+
 
     @Test
     public void testLegacyWithEquals() throws Exception {
@@ -130,6 +136,14 @@ public class TestCookieParsing extends TomcatBaseTest {
 
 
     @Test
+    public void testRfc6265V1() throws Exception {
+        TestCookieParsingClient client = new TestCookieParsingClient(
+                new Rfc6265CookieProcessor(), COOKIES_V1, COOKIES_V1_CONCAT);
+        client.doRequest();
+    }
+
+
+    @Test
     public void testLegacyWithSeps() throws Exception {
         doTestLegacySeps(true, true);
     }
@@ -181,26 +195,10 @@ public class TestCookieParsing extends TomcatBaseTest {
 
     @Test
     public void testLegacyPreserveHeader() throws Exception {
-        doTestLegacyPreserveHeader(true);
-    }
-
-
-    @Test
-    public void testLegacyNoPreserveHeader() throws Exception {
-        doTestLegacyPreserveHeader(false);
-    }
-
-
-    private void doTestLegacyPreserveHeader(boolean preserveHeader) throws Exception {
         LegacyCookieProcessor legacyCookieProcessor = new LegacyCookieProcessor();
-        legacyCookieProcessor.setPreserveCookieHeader(preserveHeader);
 
         String expected;
-        if (preserveHeader) {
-            expected = concat(COOKIES_WITH_QUOTES);
-        } else {
-            expected = COOKIES_WITH_QUOTES_MODIFIED;
-        }
+        expected = concat(COOKIES_WITH_QUOTES);
         TestCookieParsingClient client = new TestCookieParsingClient(
                 legacyCookieProcessor, true, COOKIES_WITH_QUOTES, expected);
         client.doRequest();
@@ -257,7 +255,7 @@ public class TestCookieParsing extends TomcatBaseTest {
             } else {
                 Tomcat.addServlet(root, "Cookies", new EchoCookies());
             }
-            root.addServletMapping("/test", "Cookies");
+            root.addServletMappingDecoded("/test", "Cookies");
 
             tomcat.start();
             // Open connection
@@ -312,8 +310,6 @@ public class TestCookieParsing extends TomcatBaseTest {
     }
 
 
-
-
     private static class EchoCookieHeader extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
@@ -323,7 +319,11 @@ public class TestCookieParsing extends TomcatBaseTest {
         throws ServletException, IOException {
             req.getCookies();
             // Never do this in production code. It triggers an XSS.
-            resp.getWriter().write(req.getHeader("Cookie"));
+            Enumeration<String> cookieHeaders = req.getHeaders("Cookie");
+            while (cookieHeaders.hasMoreElements()) {
+                String cookieHeader = cookieHeaders.nextElement();
+                resp.getWriter().write(cookieHeader);
+            }
             resp.flushBuffer();
         }
     }

@@ -104,9 +104,12 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
 
+        // Configure allowed trailer headers
+        tomcat.getConnector().setProperty("allowedTrailerHeaders", "X-Trailer1,X-Trailer2");
+
         EchoHeaderServlet servlet = new EchoHeaderServlet(expectPass);
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -168,7 +171,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new EchoHeaderServlet(false));
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         // Limit the size of the trailing header
         tomcat.getConnector().setProperty("maxTrailerSize", "10");
@@ -231,7 +234,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new EchoHeaderServlet(ok));
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -279,7 +282,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new EchoHeaderServlet(true));
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -379,7 +382,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
 
         BodyReadServlet servlet = new BodyReadServlet(expectPass, readLimit);
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -462,7 +465,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
                 throw ioe;
             }
 
-            pw.write(Integer.valueOf(count).toString());
+            pw.write(Integer.toString(count));
 
             // Headers should be visible now
             dumpHeader("x-trailer1", req, pw);
@@ -518,7 +521,7 @@ public class TestChunkedInputFilter extends TomcatBaseTest {
                 throw ioe;
             }
 
-            pw.write(Integer.valueOf(countRead).toString());
+            pw.write(Integer.toString(countRead));
         }
 
         public boolean getExceptionDuringRead() {

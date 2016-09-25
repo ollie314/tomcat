@@ -27,8 +27,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ChannelException;
@@ -42,18 +44,21 @@ import org.apache.catalina.tribes.group.RpcCallback;
 import org.apache.catalina.tribes.group.RpcChannel;
 import org.apache.catalina.tribes.io.XByteBuffer;
 import org.apache.catalina.tribes.util.Arrays;
+import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- *
- * @version 1.0
+ * @param <K> The type of Key
+ * @param <V> The type of Value
  */
 public abstract class AbstractReplicatedMap<K,V>
         implements Map<K,V>, Serializable, RpcCallback, ChannelListener,
         MembershipListener, Heartbeat {
 
     private static final long serialVersionUID = 1L;
+
+    protected static final StringManager sm = StringManager.getManager(AbstractReplicatedMap.class);
 
     private final Log log = LogFactory.getLog(AbstractReplicatedMap.class);
 
@@ -71,7 +76,7 @@ public abstract class AbstractReplicatedMap<K,V>
 //------------------------------------------------------------------------------
 //              INSTANCE VARIABLES
 //------------------------------------------------------------------------------
-    protected final ConcurrentHashMap<K, MapEntry<K,V>> innerMap;
+    protected final ConcurrentMap<K, MapEntry<K,V>> innerMap;
 
     protected abstract int getStateMessageType();
 
@@ -140,6 +145,11 @@ public abstract class AbstractReplicatedMap<K,V>
      */
     protected transient String mapname = "";
 
+    /**
+     * State of this map
+     */
+    private transient volatile State state = State.NEW;
+
 //------------------------------------------------------------------------------
 //              map owner interface
 //------------------------------------------------------------------------------
@@ -153,12 +163,14 @@ public abstract class AbstractReplicatedMap<K,V>
 //------------------------------------------------------------------------------
 
     /**
-     * Creates a new map
+     * Creates a new map.
+     * @param owner The map owner
      * @param channel The channel to use for communication
      * @param timeout long - timeout for RPC messags
      * @param mapContextName String - unique name for this map, to allow multiple maps per channel
      * @param initialCapacity int - the size of this map, see HashMap
      * @param loadFactor float - load factor, see HashMap
+     * @param channelSendOptions Send options
      * @param cls - a list of classloaders to be used for deserialization of objects.
      * @param terminate - Flag for whether to terminate this map that failed to start.
      */
@@ -200,7 +212,7 @@ public abstract class AbstractReplicatedMap<K,V>
     protected void init(MapOwner owner, Channel channel, String mapContextName,
             long timeout, int channelSendOptions,ClassLoader[] cls, boolean terminate) {
         long start = System.currentTimeMillis();
-        if (log.isInfoEnabled()) log.info("Initializing AbstractReplicatedMap with context name:"+mapContextName);
+        if (log.isInfoEnabled()) log.info(sm.getString("abstractReplicatedMap.init.start", mapContextName));
         this.mapOwner = owner;
         this.externalLoaders = cls;
         this.channelSendOptions = channelSendOptions;
@@ -219,7 +231,6 @@ public abstract class AbstractReplicatedMap<K,V>
         //listen for membership notifications
         this.channel.addMembershipListener(this);
 
-
         try {
             //broadcast our map, this just notifies other members of our existence
             broadcast(MapMessage.MSG_INIT, true);
@@ -228,15 +239,17 @@ public abstract class AbstractReplicatedMap<K,V>
             //state is transferred, we are ready for messaging
             broadcast(MapMessage.MSG_START, true);
         } catch (ChannelException x) {
-            log.warn("Unable to send map start message.");
+            log.warn(sm.getString("abstractReplicatedMap.unableSend.startMessage"));
             if (terminate) {
                 breakdown();
-                throw new RuntimeException("Unable to start replicated map.",x);
+                throw new RuntimeException(sm.getString("abstractReplicatedMap.unableStart"),x);
             }
         }
+        this.state = State.INITIALIZED;
         long complete = System.currentTimeMillis() - start;
         if (log.isInfoEnabled())
-            log.info("AbstractReplicatedMap[" +mapContextName + "] initialization was completed in " + complete + " ms.");
+            log.info(sm.getString("abstractReplicatedMap.init.completed",
+                    mapContextName, Long.toString(complete)));
     }
 
 
@@ -244,12 +257,12 @@ public abstract class AbstractReplicatedMap<K,V>
      * Sends a ping out to all the members in the cluster, not just map members
      * that this map is alive.
      * @param timeout long
-     * @throws ChannelException
+     * @throws ChannelException Send error
      */
     protected void ping(long timeout) throws ChannelException {
         //send out a map membership message, only wait for the first reply
         MapMessage msg = new MapMessage(this.mapContextName,
-                                        MapMessage.MSG_INIT,
+                                        MapMessage.MSG_PING,
                                         false,
                                         null,
                                         null,
@@ -264,7 +277,20 @@ public abstract class AbstractReplicatedMap<K,V>
                                                   (channelSendOptions),
                                                   (int) accessTimeout);
                 for (int i = 0; i < resp.length; i++) {
-                    memberAlive(resp[i].getSource());
+                    MapMessage mapMsg = (MapMessage)resp[i].getMessage();
+                    try {
+                        mapMsg.deserialize(getExternalLoaders());
+                        State state = (State) mapMsg.getValue();
+                        if (state.isAvailable()) {
+                            memberAlive(resp[i].getSource());
+                        } else {
+                            if (log.isInfoEnabled())
+                                log.info(sm.getString("abstractReplicatedMap.mapMember.unavailable",
+                                        resp[i].getSource()));
+                        }
+                    } catch (ClassNotFoundException | IOException e) {
+                        log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), e);
+                    }
                 }
             } catch (ChannelException ce) {
                 // Handle known failed members
@@ -282,6 +308,7 @@ public abstract class AbstractReplicatedMap<K,V>
             for (Member member : members) {
                 long access = mapMembers.get(member).longValue();
                 if ( (now - access) > timeout ) {
+                    log.warn(sm.getString("abstractReplicatedMap.ping.timeout", member, mapname));
                     memberDisappeared(member);
                 }
             }
@@ -295,7 +322,7 @@ public abstract class AbstractReplicatedMap<K,V>
     protected void memberAlive(Member member) {
         mapMemberAdded(member);
         synchronized (mapMembers) {
-            mapMembers.put(member, new Long(System.currentTimeMillis()));
+            mapMembers.put(member, Long.valueOf(System.currentTimeMillis()));
         }
     }
 
@@ -303,7 +330,7 @@ public abstract class AbstractReplicatedMap<K,V>
      * Helper method to broadcast a message to all members in a channel
      * @param msgtype int
      * @param rpc boolean
-     * @throws ChannelException
+     * @throws ChannelException Send error
      */
     protected void broadcast(int msgtype, boolean rpc) throws ChannelException {
         Member[] members = channel.getMembers();
@@ -321,7 +348,7 @@ public abstract class AbstractReplicatedMap<K,V>
                     messageReceived(resp[i].getMessage(), resp[i].getSource());
                 }
             } else {
-                log.warn("broadcast received 0 replies, probably a timeout.");
+                log.warn(sm.getString("abstractReplicatedMap.broadcast.noReplies"));
             }
         } else {
             channel.send(channel.getMembers(),msg,channelSendOptions);
@@ -329,12 +356,13 @@ public abstract class AbstractReplicatedMap<K,V>
     }
 
     public void breakdown() {
+        this.state = State.DESTROYED;
         if (this.rpcChannel != null) {
             this.rpcChannel.breakdown();
         }
-        try {broadcast(MapMessage.MSG_STOP,false); }catch ( Exception ignore){}
-        //cleanup
         if (this.channel != null) {
+            try {broadcast(MapMessage.MSG_STOP,false); }catch ( Exception ignore){}
+            //cleanup
             this.channel.removeChannelListener(this);
             this.channel.removeMembershipListener(this);
         }
@@ -396,6 +424,7 @@ public abstract class AbstractReplicatedMap<K,V>
     /**
      * Replicates any changes to the object since the last time
      * The object has to be primary, ie, if the object is a proxy or a backup, it will not be replicated<br>
+     * @param key The object to replicate
      * @param complete - if set to true, the object is replicated to its backup
      * if set to false, only objects that implement ReplicatedMapEntry and the isDirty() returns true will
      * be replicated
@@ -433,7 +462,7 @@ public abstract class AbstractReplicatedMap<K,V>
                                          entry.getBackupNodes());
                     rentry.resetDiff();
                 } catch (IOException x) {
-                    log.error("Unable to diff object. Will replicate the entire object instead.", x);
+                    log.error(sm.getString("abstractReplicatedMap.unable.diffObject"), x);
                 } finally {
                     rentry.unlock();
                 }
@@ -457,7 +486,7 @@ public abstract class AbstractReplicatedMap<K,V>
                     channel.send(entry.getBackupNodes(), msg, channelSendOptions);
                 }
             } catch (ChannelException x) {
-                log.error("Unable to replicate data.", x);
+                log.error(sm.getString("abstractReplicatedMap.unable.replicate"), x);
             }
         } //end if
 
@@ -495,22 +524,21 @@ public abstract class AbstractReplicatedMap<K,V>
                             messageReceived( (Serializable) list.get(i), resp[0].getSource());
                         } //for
                     }
+                    stateTransferred = true;
                 } else {
-                    log.warn("Transfer state, 0 replies, probably a timeout.");
+                    log.warn(sm.getString("abstractReplicatedMap.transferState.noReplies"));
                 }
             }
         } catch (ChannelException x) {
-            log.error("Unable to transfer LazyReplicatedMap state.", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
         } catch (IOException x) {
-            log.error("Unable to transfer LazyReplicatedMap state.", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
         } catch (ClassNotFoundException x) {
-            log.error("Unable to transfer LazyReplicatedMap state.", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
         }
-        stateTransferred = true;
     }
 
     /**
-     * TODO implement state transfer
      * @param msg Serializable
      * @return Serializable - null if no reply should be sent
      */
@@ -562,6 +590,13 @@ public abstract class AbstractReplicatedMap<K,V>
             } //synchronized
         }
 
+        // ping
+        if (mapmsg.getMsgType() == MapMessage.MSG_PING) {
+            mapmsg.setValue(state);
+            mapmsg.setPrimary(channel.getLocalMember(false));
+            return mapmsg;
+        }
+
         return null;
 
     }
@@ -582,13 +617,19 @@ public abstract class AbstractReplicatedMap<K,V>
             mapmsg.deserialize(getExternalLoaders());
             if (mapmsg.getMsgType() == MapMessage.MSG_START) {
                 mapMemberAdded(mapmsg.getPrimary());
-            } else if (mapmsg.getMsgType() == MapMessage.MSG_INIT) {
+            } else if (mapmsg.getMsgType() == MapMessage.MSG_INIT
+                    || mapmsg.getMsgType() == MapMessage.MSG_PING) {
                 memberAlive(mapmsg.getPrimary());
+            } else {
+                // other messages are ignored.
+                if (log.isInfoEnabled())
+                    log.info(sm.getString("abstractReplicatedMap.leftOver.ignored",
+                            mapmsg.getTypeDesc()));
             }
         } catch (IOException x ) {
-            log.error("Unable to deserialize MapMessage.",x);
+            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"),x);
         } catch (ClassNotFoundException x ) {
-            log.error("Unable to deserialize MapMessage.",x);
+            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"),x);
         }
     }
 
@@ -605,10 +646,10 @@ public abstract class AbstractReplicatedMap<K,V>
         try {
             mapmsg.deserialize(getExternalLoaders());
         } catch (IOException x) {
-            log.error("Unable to deserialize MapMessage.", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
             return;
         } catch (ClassNotFoundException x) {
-            log.error("Unable to deserialize MapMessage.", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
             return;
         }
         if ( log.isTraceEnabled() )
@@ -666,13 +707,22 @@ public abstract class AbstractReplicatedMap<K,V>
                         try {
                             diff.applyDiff(mapmsg.getDiffValue(), 0, mapmsg.getDiffValue().length);
                         } catch (Exception x) {
-                            log.error("Unable to apply diff to key:" + entry.getKey(), x);
+                            log.error(sm.getString("abstractReplicatedMap.unableApply.diff", entry.getKey()), x);
                         } finally {
                             diff.unlock();
                         }
                     } else {
-                        if ( mapmsg.getValue()!=null ) entry.setValue((V) mapmsg.getValue());
-                        ((ReplicatedMapEntry)entry.getValue()).setOwner(getMapOwner());
+                        if ( mapmsg.getValue()!=null ) {
+                            if (mapmsg.getValue() instanceof ReplicatedMapEntry) {
+                                ReplicatedMapEntry re = (ReplicatedMapEntry)mapmsg.getValue();
+                                re.setOwner(getMapOwner());
+                                entry.setValue((V) re);
+                            } else {
+                                entry.setValue((V) mapmsg.getValue());
+                            }
+                        } else {
+                            ((ReplicatedMapEntry)entry.getValue()).setOwner(getMapOwner());
+                        }
                     } //end if
                 } else if  (mapmsg.getValue() instanceof ReplicatedMapEntry) {
                     ReplicatedMapEntry re = (ReplicatedMapEntry)mapmsg.getValue();
@@ -720,9 +770,16 @@ public abstract class AbstractReplicatedMap<K,V>
         if ( member.equals(getChannel().getLocalMember(false)) ) return;
         boolean memberAdded = false;
         //select a backup node if we don't have one
+        Member mapMember = getChannel().getMember(member);
+        if (mapMember == null) {
+            log.warn(sm.getString("abstractReplicatedMap.mapMemberAdded.nullMember", member));
+            return;
+        }
         synchronized (mapMembers) {
-            if (!mapMembers.containsKey(member) ) {
-                mapMembers.put(member, new Long(System.currentTimeMillis()));
+            if (!mapMembers.containsKey(mapMember) ) {
+                if (log.isInfoEnabled())
+                    log.info(sm.getString("abstractReplicatedMap.mapMemberAdded.added", mapMember));
+                mapMembers.put(mapMember, Long.valueOf(System.currentTimeMillis()));
                 memberAdded = true;
             }
         }
@@ -739,7 +796,7 @@ public abstract class AbstractReplicatedMap<K,V>
                             entry.setBackupNodes(backup);
                             entry.setPrimary(channel.getLocalMember(false));
                         } catch (ChannelException x) {
-                            log.error("Unable to select backup node.", x);
+                            log.error(sm.getString("abstractReplicatedMap.unableSelect.backup"), x);
                         } //catch
                     } //end if
                 } //while
@@ -782,7 +839,7 @@ public abstract class AbstractReplicatedMap<K,V>
             }
         }
         if (log.isInfoEnabled())
-            log.info("Member["+member+"] disappeared. Related map entries will be relocated to the new node.");
+            log.info(sm.getString("abstractReplicatedMap.member.disappeared", member));
         long start = System.currentTimeMillis();
         Iterator<Map.Entry<K,MapEntry<K,V>>> i = innerMap.entrySet().iterator();
         while (i.hasNext()) {
@@ -796,7 +853,7 @@ public abstract class AbstractReplicatedMap<K,V>
                     entry.setBackupNodes(backup);
                     entry.setPrimary(channel.getLocalMember(false));
                 } catch (ChannelException x) {
-                    log.error("Unable to relocate[" + entry.getKey() + "] to a new backup node", x);
+                    log.error(sm.getString("abstractReplicatedMap.unable.relocate", entry.getKey()), x);
                 }
             } else if (member.equals(entry.getPrimary())) {
                 if (log.isDebugEnabled()) log.debug("[2] Primary disappeared");
@@ -827,13 +884,14 @@ public abstract class AbstractReplicatedMap<K,V>
                     if ( mapOwner!=null ) mapOwner.objectMadePrimary(entry.getKey(),entry.getValue());
 
                 } catch (ChannelException x) {
-                    log.error("Unable to relocate[" + entry.getKey() + "] to a new backup node", x);
+                    log.error(sm.getString("abstractReplicatedMap.unable.relocate", entry.getKey()), x);
                 }
             }
 
         } //while
         long complete = System.currentTimeMillis() - start;
-        if (log.isInfoEnabled()) log.info("Relocation of map entries was complete in " + complete + " ms.");
+        if (log.isInfoEnabled()) log.info(sm.getString("abstractReplicatedMap.relocate.complete",
+                Long.toString(complete)));
     }
 
     public int getNextBackupIndex() {
@@ -859,9 +917,9 @@ public abstract class AbstractReplicatedMap<K,V>
     @Override
     public void heartbeat() {
         try {
-            ping(accessTimeout);
+            if (this.state.isAvailable()) ping(accessTimeout);
         }catch ( Exception x ) {
-            log.error("Unable to send AbstractReplicatedMap.ping message",x);
+            log.error(sm.getString("abstractReplicatedMap.heartbeat.failed"),x);
         }
     }
 
@@ -888,7 +946,7 @@ public abstract class AbstractReplicatedMap<K,V>
                 getChannel().send(getMapMembers(), msg, getChannelSendOptions());
             }
         } catch ( ChannelException x ) {
-            log.error("Unable to replicate out data for a LazyReplicatedMap.remove operation",x);
+            log.error(sm.getString("abstractReplicatedMap.unable.remove"),x);
         }
         return entry!=null?entry.getValue():null;
     }
@@ -916,15 +974,22 @@ public abstract class AbstractReplicatedMap<K,V>
                     msg = new MapMessage(getMapContextName(), MapMessage.MSG_RETRIEVE_BACKUP, false,
                                          (Serializable) key, null, null, null,null);
                     Response[] resp = getRpcChannel().send(entry.getBackupNodes(),msg, RpcChannel.FIRST_REPLY, Channel.SEND_OPTIONS_DEFAULT, getRpcTimeout());
-                    if (resp == null || resp.length == 0) {
+                    if (resp == null || resp.length == 0 || resp[0].getMessage() == null) {
                         //no responses
-                        log.warn("Unable to retrieve remote object for key:" + key);
+                        log.warn(sm.getString("abstractReplicatedMap.unable.retrieve", key));
                         return null;
                     }
                     msg = (MapMessage) resp[0].getMessage();
                     msg.deserialize(getExternalLoaders());
                     backup = entry.getBackupNodes();
                     if ( msg.getValue()!=null ) entry.setValue((V) msg.getValue());
+
+                    // notify member
+                    msg = new MapMessage(getMapContextName(), MapMessage.MSG_NOTIFY_MAPMEMBER,false,
+                            (Serializable)entry.getKey(), null, null, channel.getLocalMember(false), backup);
+                    if ( backup != null && backup.length > 0) {
+                        getChannel().send(backup, msg, getChannelSendOptions());
+                    }
 
                     //invalidate the previous primary
                     msg = new MapMessage(getMapContextName(),MapMessage.MSG_PROXY,false,(Serializable)key,null,null,channel.getLocalMember(false),backup);
@@ -952,7 +1017,7 @@ public abstract class AbstractReplicatedMap<K,V>
                 if ( getMapOwner()!=null ) getMapOwner().objectMadePrimary(key, entry.getValue());
 
             } catch (Exception x) {
-                log.error("Unable to replicate out data for a LazyReplicatedMap.get operation", x);
+                log.error(sm.getString("abstractReplicatedMap.unable.get"), x);
                 return null;
             }
         }
@@ -1018,7 +1083,7 @@ public abstract class AbstractReplicatedMap<K,V>
                 entry.setBackupNodes(backup);
             }
         } catch (ChannelException x) {
-            log.error("Unable to replicate out data for a LazyReplicatedMap.put operation", x);
+            log.error(sm.getString("abstractReplicatedMap.unable.put"), x);
         }
         innerMap.put(key,entry);
         return old;
@@ -1057,9 +1122,7 @@ public abstract class AbstractReplicatedMap<K,V>
 
     @Override
     public boolean containsValue(Object value) {
-        if (value == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(value);
         Iterator<Map.Entry<K,MapEntry<K,V>>> i = innerMap.entrySet().iterator();
         while (i.hasNext()) {
             Map.Entry<K,MapEntry<K,V>> e = i.next();
@@ -1071,7 +1134,7 @@ public abstract class AbstractReplicatedMap<K,V>
 
     @Override
     public Object clone() {
-        throw new UnsupportedOperationException("This operation is not valid on a replicated map");
+        throw new UnsupportedOperationException(sm.getString("abstractReplicatedMap.unsupport.operation"));
     }
 
     /**
@@ -1280,8 +1343,8 @@ public abstract class AbstractReplicatedMap<K,V>
          * @param offset int
          * @param length int
          * @param diff boolean
-         * @throws IOException
-         * @throws ClassNotFoundException
+         * @throws IOException IO error
+         * @throws ClassNotFoundException Deserialization error
          */
         @SuppressWarnings("unchecked")
         public void apply(byte[] data, int offset, int length, boolean diff) throws IOException, ClassNotFoundException {
@@ -1332,6 +1395,7 @@ public abstract class AbstractReplicatedMap<K,V>
         public static final int MSG_STATE_COPY = 10;
         public static final int MSG_ACCESS = 11;
         public static final int MSG_NOTIFY_MAPMEMBER = 12;
+        public static final int MSG_PING = 13;
 
         private final byte[] mapId;
         private final int msgtype;
@@ -1371,6 +1435,7 @@ public abstract class AbstractReplicatedMap<K,V>
                 case MSG_COPY: return "MSG_COPY";
                 case MSG_ACCESS: return "MSG_ACCESS";
                 case MSG_NOTIFY_MAPMEMBER: return "MSG_NOTIFY_MAPMEMBER";
+                case MSG_PING: return "MSG_PING";
                 default : return "UNKNOWN";
             }
         }
@@ -1407,7 +1472,7 @@ public abstract class AbstractReplicatedMap<K,V>
             try {
                 return key(null);
             } catch ( Exception x ) {
-                throw new RuntimeException("Deserialization error of the MapMessage.key", x);
+                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.key"), x);
             }
         }
 
@@ -1427,7 +1492,7 @@ public abstract class AbstractReplicatedMap<K,V>
             try {
                 return value(null);
             } catch ( Exception x ) {
-                throw new RuntimeException("Deserialization error of the MapMessage.value", x);
+                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.value"), x);
             }
         }
 
@@ -1551,4 +1616,19 @@ public abstract class AbstractReplicatedMap<K,V>
         this.accessTimeout = accessTimeout;
     }
 
+    private static enum State {
+        NEW(false),
+        INITIALIZED(true),
+        DESTROYED(false);
+
+        private final boolean available;
+
+        private State(boolean available) {
+            this.available = available;
+        }
+
+        public boolean isAvailable() {
+            return available;
+        }
+    }
 }

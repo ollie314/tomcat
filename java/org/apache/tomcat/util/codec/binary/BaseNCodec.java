@@ -255,6 +255,7 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      *
      * @param size minimum spare space required
      * @param context the context to be used
+     * @return the buffer
      */
     protected byte[] ensureBufferSize(final int size, final Context context){
         if ((context.buffer == null) || (context.buffer.length < context.pos + size)){
@@ -414,16 +415,36 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      *
      * @param pArray
      *            a byte array containing binary data
-     * @return A byte array containing only the basen alphabetic character data
+     * @return A byte array containing only the base N alphabetic character data
      */
     @Override
     public byte[] encode(final byte[] pArray) {
         if (pArray == null || pArray.length == 0) {
             return pArray;
         }
+        return encode(pArray, 0, pArray.length);
+    }
+
+    /**
+     * Encodes a byte[] containing binary data, into a byte[] containing
+     * characters in the alphabet.
+     *
+     * @param pArray
+     *            a byte array containing binary data
+     * @param offset
+     *            initial offset of the subarray.
+     * @param length
+     *            length of the subarray.
+     * @return A byte array containing only the base N alphabetic character data
+     * @since 1.11
+     */
+    public byte[] encode(final byte[] pArray, int offset, int length) {
+        if (pArray == null || pArray.length == 0) {
+            return pArray;
+        }
         final Context context = new Context();
-        encode(pArray, 0, pArray.length, context);
-        encode(pArray, 0, EOF, context); // Notify encoder of EOF.
+        encode(pArray, offset, length, context);
+        encode(pArray, offset, EOF, context); // Notify encoder of EOF.
         final byte[] buf = new byte[context.pos - context.readPos];
         readResults(buf, 0, buf.length, context);
         return buf;
@@ -441,7 +462,7 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      *
      * @param value The value to test
      *
-     * @return {@code true} if the value is defined in the current alphabet, {@code false} otherwise.
+     * @return <code>true</code> if the value is defined in the current alphabet, <code>false</code> otherwise.
      */
     protected abstract boolean isInAlphabet(byte value);
 
@@ -450,15 +471,15 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      * The method optionally treats whitespace and pad as valid.
      *
      * @param arrayOctet byte array to test
-     * @param allowWSPad if {@code true}, then whitespace and PAD are also allowed
+     * @param allowWSPad if <code>true</code>, then whitespace and PAD are also allowed
      *
-     * @return {@code true} if all bytes are valid characters in the alphabet or if the byte array is empty;
-     *         {@code false}, otherwise
+     * @return <code>true</code> if all bytes are valid characters in the alphabet or if the byte array is empty;
+     *         <code>false</code>, otherwise
      */
     public boolean isInAlphabet(final byte[] arrayOctet, final boolean allowWSPad) {
-        for (int i = 0; i < arrayOctet.length; i++) {
-            if (!isInAlphabet(arrayOctet[i]) &&
-                    (!allowWSPad || (arrayOctet[i] != pad) && !isWhiteSpace(arrayOctet[i]))) {
+        for (byte octet : arrayOctet) {
+            if (!isInAlphabet(octet) &&
+                    (!allowWSPad || (octet != pad) && !isWhiteSpace(octet))) {
                 return false;
             }
         }
@@ -470,8 +491,8 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      * The method treats whitespace and PAD as valid.
      *
      * @param basen String to test
-     * @return {@code true} if all characters in the String are valid characters in the alphabet or if
-     *         the String is empty; {@code false}, otherwise
+     * @return <code>true</code> if all characters in the String are valid characters in the alphabet or if
+     *         the String is empty; <code>false</code>, otherwise
      * @see #isInAlphabet(byte[], boolean)
      */
     public boolean isInAlphabet(final String basen) {
@@ -485,7 +506,7 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
      *
      * @param arrayOctet
      *            byte array to test
-     * @return {@code true} if any byte is a valid character in the alphabet or PAD; {@code false} otherwise
+     * @return <code>true</code> if any byte is a valid character in the alphabet or PAD; <code>false</code> otherwise
      */
     protected boolean containsAlphabetOrPad(final byte[] arrayOctet) {
         if (arrayOctet == null) {

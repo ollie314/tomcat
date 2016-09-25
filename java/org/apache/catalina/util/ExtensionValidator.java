@@ -121,6 +121,7 @@ public final class ExtensionValidator {
      *                  application
      *
      * @return true if all required extensions satisfied
+     * @throws IOException Error reading resources needed for validation
      */
     public static synchronized boolean validateApplication(
                                            WebResourceRoot resources,
@@ -168,6 +169,7 @@ public final class ExtensionValidator {
      * it to the container's manifest resources.
      *
      * @param jarFile The system JAR whose manifest to add
+     * @throws IOException Error reading JAR file
      */
     public static void addSystemResource(File jarFile) throws IOException {
         try (InputStream is = new FileInputStream(jarFile)) {
@@ -354,6 +356,9 @@ public final class ExtensionValidator {
                     continue;
                 }
                 File[] files = targetDir.listFiles();
+                if (files == null) {
+                    continue;
+                }
                 for (int i = 0; i < files.length; i++) {
                     if (files[i].getName().toLowerCase(Locale.ENGLISH).endsWith(".jar") &&
                             files[i].isFile()) {

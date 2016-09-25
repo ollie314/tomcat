@@ -30,6 +30,7 @@ import javax.websocket.Extension;
 import javax.websocket.MessageHandler;
 import javax.websocket.PongMessage;
 
+import org.apache.juli.logging.Log;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.Utf8Decoder;
 import org.apache.tomcat.util.res.StringManager;
@@ -42,7 +43,7 @@ import org.apache.tomcat.util.res.StringManager;
 public abstract class WsFrameBase {
 
     private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
+            StringManager.getManager(WsFrameBase.class);
 
     // Connection level attributes
     protected final WsSession wsSession;
@@ -78,13 +79,13 @@ public abstract class WsFrameBase {
     private final byte[] mask = new byte[4];
     private int maskIndex = 0;
     private long payloadLength = 0;
-    private long payloadWritten = 0;
+    private volatile long payloadWritten = 0;
 
     // Attributes tracking state
-    private State state = State.NEW_FRAME;
+    private volatile State state = State.NEW_FRAME;
     private volatile boolean open = true;
-    private int readPos = 0;
-    protected int writePos = 0;
+    private volatile int readPos = 0;
+    protected volatile int writePos = 0;
 
     public WsFrameBase(WsSession wsSession, Transformation transformation) {
         inputBuffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
@@ -220,11 +221,16 @@ public abstract class WsFrameBase {
         }
         payloadLength = b & 0x7F;
         state = State.PARTIAL_HEADER;
+        if (getLog().isDebugEnabled()) {
+            getLog().debug(sm.getString("wsFrame.partialHeaderComplete", Boolean.toString(fin),
+                    Integer.toString(rsv), Integer.toString(opCode), Long.toString(payloadLength)));
+        }
         return true;
     }
 
 
     protected abstract boolean isMasked();
+    protected abstract Log getLog();
 
 
     /**
@@ -371,7 +377,7 @@ public abstract class WsFrameBase {
 
 
     @SuppressWarnings("unchecked")
-    private void sendMessageText(boolean last) throws WsIOException {
+    protected void sendMessageText(boolean last) throws WsIOException {
         if (textMsgHandler instanceof WrappedMessageHandler) {
             long maxMessageSize =
                     ((WrappedMessageHandler) textMsgHandler).getMaxMessageSize();
@@ -469,7 +475,7 @@ public abstract class WsFrameBase {
                             CloseCodes.TOO_BIG,
                             sm.getString("wsFrame.textMessageTooBig")));
                 }
-            } else if (cr.isUnderflow() & !last) {
+            } else if (cr.isUnderflow() && !last) {
                 // End of frame and possible message as well.
 
                 if (continuationExpected) {
@@ -566,7 +572,7 @@ public abstract class WsFrameBase {
 
 
     @SuppressWarnings("unchecked")
-    private void sendMessageBinary(ByteBuffer msg, boolean last)
+    protected void sendMessageBinary(ByteBuffer msg, boolean last)
             throws WsIOException {
         if (binaryMsgHandler instanceof WrappedMessageHandler) {
             long maxMessageSize =
@@ -730,6 +736,11 @@ public abstract class WsFrameBase {
         @Override
         public boolean validateRsv(int rsv, byte opCode) {
             return rsv == 0;
+        }
+
+        @Override
+        public void close() {
+            // NO-OP for the terminal transformations
         }
     }
 

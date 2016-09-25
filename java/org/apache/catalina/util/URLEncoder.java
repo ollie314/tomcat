@@ -67,13 +67,22 @@ public class URLEncoder {
         safeCharacters.set( c );
     }
 
-    public String encode( String path ) {
+
+    /**
+     * URL encodes the provided path using the given encoding.
+     *
+     * @param path      The path to encode
+     * @param encoding  The encoding to use to convert the path to bytes
+     *
+     * @return The encoded path
+     */
+    public String encode(String path, String encoding) {
         int maxBytesPerChar = 10;
         StringBuilder rewrittenPath = new StringBuilder(path.length());
         ByteArrayOutputStream buf = new ByteArrayOutputStream(maxBytesPerChar);
         OutputStreamWriter writer = null;
         try {
-            writer = new OutputStreamWriter(buf, "UTF8");
+            writer = new OutputStreamWriter(buf, encoding);
         } catch (Exception e) {
             e.printStackTrace();
             writer = new OutputStreamWriter(buf);

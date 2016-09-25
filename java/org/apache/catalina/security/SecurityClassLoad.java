@@ -61,7 +61,7 @@ public final class SecurityClassLoad {
              "AccessLogAdapter");
         loader.loadClass
             (basePackage +
-             "ApplicationContextFacade$1");
+             "ApplicationContextFacade$PrivilegedExecuteMethod");
         loader.loadClass
             (basePackage +
              "ApplicationDispatcher$PrivilegedForward");
@@ -70,13 +70,16 @@ public final class SecurityClassLoad {
              "ApplicationDispatcher$PrivilegedInclude");
         loader.loadClass
             (basePackage +
+             "ApplicationPushBuilder");
+        loader.loadClass
+            (basePackage +
             "AsyncContextImpl");
         loader.loadClass
             (basePackage +
-            "AsyncContextImpl$DebugException");
+            "AsyncContextImpl$AsyncRunnable");
         loader.loadClass
             (basePackage +
-            "AsyncContextImpl$1");
+            "AsyncContextImpl$DebugException");
         loader.loadClass
             (basePackage +
             "AsyncListenerWrapper");
@@ -109,7 +112,7 @@ public final class SecurityClassLoad {
         final String basePackage = "org.apache.catalina.loader.";
         loader.loadClass
             (basePackage +
-             "WebappClassLoaderBase$PrivilegedFindResourceByName");
+             "WebappClassLoaderBase$PrivilegedFindClassByName");
     }
 
 
@@ -167,6 +170,7 @@ public final class SecurityClassLoad {
         // Make sure system property is read at this point
         Class<?> clazz = loader.loadClass(basePackage + "Constants");
         clazz.newInstance();
+        loader.loadClass(basePackage + "http2.Stream$1");
     }
 
 
@@ -232,6 +236,9 @@ public final class SecurityClassLoad {
              "OutputBuffer$1");
         loader.loadClass
             (basePackage +
+             "OutputBuffer$2");
+        loader.loadClass
+            (basePackage +
              "CoyoteInputStream$1");
         loader.loadClass
             (basePackage +
@@ -263,17 +270,24 @@ public final class SecurityClassLoad {
             throws Exception {
         final String basePackage = "org.apache.tomcat.";
         // buf
+        loader.loadClass(basePackage + "util.buf.ByteBufferUtils");
         loader.loadClass(basePackage + "util.buf.HexUtils");
         loader.loadClass(basePackage + "util.buf.StringCache");
         loader.loadClass(basePackage + "util.buf.StringCache$ByteEntry");
         loader.loadClass(basePackage + "util.buf.StringCache$CharEntry");
+        loader.loadClass(basePackage + "util.buf.UriUtil");
+        // collections
+        loader.loadClass(basePackage + "util.collections.CaseInsensitiveKeyMap");
+        loader.loadClass(basePackage + "util.collections.CaseInsensitiveKeyMap$EntryImpl");
+        loader.loadClass(basePackage + "util.collections.CaseInsensitiveKeyMap$EntryIterator");
+        loader.loadClass(basePackage + "util.collections.CaseInsensitiveKeyMap$EntrySet");
+        loader.loadClass(basePackage + "util.collections.CaseInsensitiveKeyMap$Key");
         // http
-        loader.loadClass(basePackage + "util.http.HttpMessages");
+        loader.loadClass(basePackage + "util.http.CookieProcessor");
+        loader.loadClass(basePackage + "util.http.NamesEnumerator");
         // Make sure system property is read at this point
-        Class<?> clazz = loader.loadClass(
-                basePackage + "util.http.FastHttpDateFormat");
+        Class<?> clazz = loader.loadClass(basePackage + "util.http.FastHttpDateFormat");
         clazz.newInstance();
-        loader.loadClass(basePackage + "util.http.HttpMessages");
         loader.loadClass(basePackage + "util.http.parser.HttpParser");
         loader.loadClass(basePackage + "util.http.parser.MediaType");
         loader.loadClass(basePackage + "util.http.parser.MediaTypeCache");
@@ -287,7 +301,6 @@ public final class SecurityClassLoad {
                 "util.net.NioBlockingSelector$BlockPoller$2");
         loader.loadClass(basePackage +
                 "util.net.NioBlockingSelector$BlockPoller$3");
-        loader.loadClass(basePackage + "util.net.SSLSupport$CipherData");
         // security
         loader.loadClass(basePackage + "util.security.PrivilegedGetTccl");
         loader.loadClass(basePackage + "util.security.PrivilegedSetTccl");

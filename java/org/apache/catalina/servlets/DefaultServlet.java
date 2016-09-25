@@ -29,6 +29,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.Reader;
+import java.io.Serializable;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.security.AccessController;
@@ -36,9 +37,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.StringTokenizer;
 
+import javax.servlet.DispatcherType;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
@@ -144,11 +147,6 @@ public class DefaultServlet extends HttpServlet {
     protected static final String mimeSeparation = "CATALINA_MIME_BOUNDARY";
 
     /**
-     * JNDI resources name.
-     */
-    protected static final String RESOURCES_JNDI_NAME = "java:/comp/Resources";
-
-    /**
      * Size of file transfer buffer in bytes.
      */
     protected static final int BUFFER_SIZE = 4096;
@@ -192,9 +190,9 @@ public class DefaultServlet extends HttpServlet {
     protected boolean readOnly = true;
 
     /**
-     * Should be serve gzip versions of files. By default, it's set to false.
+     * List of compression formats to serve and their preference order.
      */
-    protected boolean gzip = false;
+    protected CompressionFormat[] compressionFormats;
 
     /**
      * The output buffer size to use when serving resources.
@@ -279,8 +277,9 @@ public class DefaultServlet extends HttpServlet {
         if (getServletConfig().getInitParameter("readonly") != null)
             readOnly = Boolean.parseBoolean(getServletConfig().getInitParameter("readonly"));
 
-        if (getServletConfig().getInitParameter("gzip") != null)
-            gzip = Boolean.parseBoolean(getServletConfig().getInitParameter("gzip"));
+        compressionFormats = parseCompressionFormats(
+                getServletConfig().getInitParameter("precompressed"),
+                getServletConfig().getInitParameter("gzip"));
 
         if (getServletConfig().getInitParameter("sendfileSize") != null)
             sendfileSize =
@@ -320,6 +319,27 @@ public class DefaultServlet extends HttpServlet {
         }
     }
 
+    private CompressionFormat[] parseCompressionFormats(String precompressed, String gzip) {
+        List<CompressionFormat> ret = new ArrayList<>();
+        if (precompressed != null && precompressed.indexOf('=') > 0) {
+            for (String pair : precompressed.split(",")) {
+                String[] setting = pair.split("=");
+                String encoding = setting[0];
+                String extension = setting[1];
+                ret.add(new CompressionFormat(extension, encoding));
+            }
+        } else if (precompressed != null) {
+            if (Boolean.parseBoolean(precompressed)) {
+                ret.add(new CompressionFormat(".br", "br"));
+                ret.add(new CompressionFormat(".gz", "gzip"));
+            }
+        } else if (Boolean.parseBoolean(gzip)) {
+            // gzip handling is for backwards compatibility with Tomcat 8.x
+            ret.add(new CompressionFormat(".gz", "gzip"));
+        }
+        return ret.toArray(new CompressionFormat[ret.size()]);
+    }
+
 
     // ------------------------------------------------------ Protected Methods
 
@@ -328,44 +348,43 @@ public class DefaultServlet extends HttpServlet {
      * Return the relative path associated with this servlet.
      *
      * @param request The servlet request we are processing
+     * @return the relative path
      */
     protected String getRelativePath(HttpServletRequest request) {
+        return getRelativePath(request, false);
+    }
+
+    protected String getRelativePath(HttpServletRequest request, boolean allowEmptyPath) {
         // IMPORTANT: DefaultServlet can be mapped to '/' or '/path/*' but always
         // serves resources from the web app root with context rooted paths.
-        // i.e. it can not be used to mount the web app root under a sub-path
+        // i.e. it cannot be used to mount the web app root under a sub-path
         // This method must construct a complete context rooted path, although
         // subclasses can change this behaviour.
 
-        // Are we being processed by a RequestDispatcher.include()?
-        if (request.getAttribute(
-                RequestDispatcher.INCLUDE_REQUEST_URI) != null) {
-            String result = (String) request.getAttribute(
-                    RequestDispatcher.INCLUDE_PATH_INFO);
-            if (result == null) {
-                result = (String) request.getAttribute(
-                        RequestDispatcher.INCLUDE_SERVLET_PATH);
-            } else {
-                result = (String) request.getAttribute(
-                        RequestDispatcher.INCLUDE_SERVLET_PATH) + result;
-            }
-            if ((result == null) || (result.equals(""))) {
-                result = "/";
-            }
-            return (result);
-        }
+        String servletPath;
+        String pathInfo;
 
-        // No, extract the desired path directly from the request
-        String result = request.getPathInfo();
-        if (result == null) {
-            result = request.getServletPath();
+        if (request.getAttribute(RequestDispatcher.INCLUDE_REQUEST_URI) != null) {
+            // For includes, get the info from the attributes
+            pathInfo = (String) request.getAttribute(RequestDispatcher.INCLUDE_PATH_INFO);
+            servletPath = (String) request.getAttribute(RequestDispatcher.INCLUDE_SERVLET_PATH);
         } else {
-            result = request.getServletPath() + result;
+            pathInfo = request.getPathInfo();
+            servletPath = request.getServletPath();
         }
-        if ((result == null) || (result.equals(""))) {
-            result = "/";
-        }
-        return (result);
 
+        StringBuilder result = new StringBuilder();
+        if (servletPath.length() > 0) {
+            result.append(servletPath);
+        }
+        if (pathInfo != null) {
+            result.append(pathInfo);
+        }
+        if (result.length() == 0 && !allowEmptyPath) {
+            result.append('/');
+        }
+
+        return result.toString();
     }
 
 
@@ -411,13 +430,13 @@ public class DefaultServlet extends HttpServlet {
      * @exception ServletException if a servlet-specified error occurs
      */
     @Override
-    protected void doHead(HttpServletRequest request,
-                          HttpServletResponse response)
-        throws IOException, ServletException {
-
-        // Serve the requested resource, without the data content
-        serveResource(request, response, false, fileEncoding);
-
+    protected void doHead(HttpServletRequest request, HttpServletResponse response)
+            throws IOException, ServletException {
+        // Serve the requested resource, without the data content unless we are
+        // being included since in that case the content needs to be provided so
+        // the correct content length is reported for the including resource
+        boolean serveContent = DispatcherType.INCLUDE.equals(request.getDispatcherType());
+        serveResource(request, response, serveContent, fileEncoding);
     }
 
 
@@ -545,6 +564,11 @@ public class DefaultServlet extends HttpServlet {
      * Handle a partial PUT.  New content specified in request is appended to
      * existing content in oldRevisionContent (if present). This code does
      * not support simultaneous partial updates to the same resource.
+     * @param req The Servlet request
+     * @param range The range that will be written
+     * @param path The path
+     * @return the associated file object
+     * @throws IOException an IO error occurred
      */
     protected File executePartialPut(HttpServletRequest req, Range range,
                                      String path)
@@ -563,39 +587,39 @@ public class DefaultServlet extends HttpServlet {
             contentFile.deleteOnExit();
         }
 
-        RandomAccessFile randAccessContentFile =
-            new RandomAccessFile(contentFile, "rw");
+        try (RandomAccessFile randAccessContentFile =
+            new RandomAccessFile(contentFile, "rw");) {
 
-        WebResource oldResource = resources.getResource(path);
+            WebResource oldResource = resources.getResource(path);
 
-        // Copy data in oldRevisionContent to contentFile
-        if (oldResource.isFile()) {
-            BufferedInputStream bufOldRevStream =
-                new BufferedInputStream(oldResource.getInputStream(),
-                        BUFFER_SIZE);
+            // Copy data in oldRevisionContent to contentFile
+            if (oldResource.isFile()) {
+                try (BufferedInputStream bufOldRevStream =
+                    new BufferedInputStream(oldResource.getInputStream(),
+                            BUFFER_SIZE);) {
 
-            int numBytesRead;
-            byte[] copyBuffer = new byte[BUFFER_SIZE];
-            while ((numBytesRead = bufOldRevStream.read(copyBuffer)) != -1) {
-                randAccessContentFile.write(copyBuffer, 0, numBytesRead);
+                    int numBytesRead;
+                    byte[] copyBuffer = new byte[BUFFER_SIZE];
+                    while ((numBytesRead = bufOldRevStream.read(copyBuffer)) != -1) {
+                        randAccessContentFile.write(copyBuffer, 0, numBytesRead);
+                    }
+
+                }
             }
 
-            bufOldRevStream.close();
-        }
+            randAccessContentFile.setLength(range.length);
 
-        randAccessContentFile.setLength(range.length);
-
-        // Append data in request input stream to contentFile
-        randAccessContentFile.seek(range.start);
-        int numBytesRead;
-        byte[] transferBuffer = new byte[BUFFER_SIZE];
-        BufferedInputStream requestBufInStream =
-            new BufferedInputStream(req.getInputStream(), BUFFER_SIZE);
-        while ((numBytesRead = requestBufInStream.read(transferBuffer)) != -1) {
-            randAccessContentFile.write(transferBuffer, 0, numBytesRead);
+            // Append data in request input stream to contentFile
+            randAccessContentFile.seek(range.start);
+            int numBytesRead;
+            byte[] transferBuffer = new byte[BUFFER_SIZE];
+            try (BufferedInputStream requestBufInStream =
+                new BufferedInputStream(req.getInputStream(), BUFFER_SIZE);) {
+                while ((numBytesRead = requestBufInStream.read(transferBuffer)) != -1) {
+                    randAccessContentFile.write(transferBuffer, 0, numBytesRead);
+                }
+            }
         }
-        randAccessContentFile.close();
-        requestBufInStream.close();
 
         return contentFile;
     }
@@ -643,9 +667,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets all the specified conditions,
-     * and false if any of the conditions is not satisfied, in which case
-     * request processing is stopped
+     * @return <code>true</code> if the resource meets all the specified
+     *  conditions, and <code>false</code> if any of the conditions is not
+     *  satisfied, in which case request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfHeaders(HttpServletRequest request,
                                      HttpServletResponse response,
@@ -664,9 +689,10 @@ public class DefaultServlet extends HttpServlet {
      * URL rewriter.
      *
      * @param path Path which has to be rewritten
+     * @return the rewritten path
      */
     protected String rewriteUrl(String path) {
-        return URLEncoder.DEFAULT.encode( path );
+        return URLEncoder.DEFAULT.encode(path, "UTF-8");
     }
 
 
@@ -691,7 +717,8 @@ public class DefaultServlet extends HttpServlet {
         boolean serveContent = content;
 
         // Identify the requested resource path
-        String path = getRelativePath(request);
+        String path = getRelativePath(request, true);
+
         if (debug > 0) {
             if (serveContent)
                 log("DefaultServlet.serveResource:  Serving resource '" +
@@ -699,6 +726,12 @@ public class DefaultServlet extends HttpServlet {
             else
                 log("DefaultServlet.serveResource:  Serving resource '" +
                     path + "' headers only");
+        }
+
+        if (path.length() == 0) {
+            // Context root redirect
+            doDirectoryRedirect(request, response);
+            return;
         }
 
         WebResource resource = resources.getResource(path);
@@ -776,7 +809,7 @@ public class DefaultServlet extends HttpServlet {
         }
 
         // These need to reflect the original resource, not the potentially
-        // gzip'd version of the resource so get them now if they are going to
+        // precompressed version of the resource so get them now if they are going to
         // be needed later
         String eTag = null;
         String lastModifiedHttp = null;
@@ -786,11 +819,13 @@ public class DefaultServlet extends HttpServlet {
         }
 
 
-        // Serve a gzipped version of the file if present
-        boolean usingGzippedVersion = false;
-        if (gzip && !included && resource.isFile() && !path.endsWith(".gz")) {
-            WebResource gzipResource = resources.getResource(path + ".gz");
-            if (gzipResource.exists() && gzipResource.isFile()) {
+        // Serve a precompressed version of the file if present
+        boolean usingPrecompressedVersion = false;
+        if (compressionFormats.length > 0 && !included && resource.isFile() &&
+                !pathEndsWithCompressedExtension(path)) {
+            List<PrecompressedResource> precompressedResources =
+                    getAvailablePrecompressedResources(path);
+            if (!precompressedResources.isEmpty()) {
                 Collection<String> varyHeaders = response.getHeaders("Vary");
                 boolean addRequired = true;
                 for (String varyHeader : varyHeaders) {
@@ -803,10 +838,12 @@ public class DefaultServlet extends HttpServlet {
                 if (addRequired) {
                     response.addHeader("Vary", "accept-encoding");
                 }
-                if (checkIfGzip(request)) {
-                    response.addHeader("Content-Encoding", "gzip");
-                    resource = gzipResource;
-                    usingGzippedVersion = true;
+                PrecompressedResource bestResource =
+                        getBestPrecompressedResource(request, precompressedResources);
+                if (bestResource != null) {
+                    response.addHeader("Content-Encoding", bestResource.format.encoding);
+                    resource = bestResource.resource;
+                    usingPrecompressedVersion = true;
                 }
             }
         }
@@ -815,6 +852,11 @@ public class DefaultServlet extends HttpServlet {
         long contentLength = -1L;
 
         if (resource.isDirectory()) {
+            if (!path.endsWith("/")) {
+                doDirectoryRedirect(request, response);
+                return;
+            }
+
             // Skip directory listings if we have been configured to
             // suppress them
             if (!listings) {
@@ -859,7 +901,7 @@ public class DefaultServlet extends HttpServlet {
             } catch (IllegalStateException e) {
                 // If it fails, we try to get a Writer instead if we're
                 // trying to serve a text file
-                if (!usingGzippedVersion &&
+                if (!usingPrecompressedVersion &&
                         ((contentType == null) ||
                                 (contentType.startsWith("text")) ||
                                 (contentType.endsWith("xml")) ||
@@ -925,7 +967,7 @@ public class DefaultServlet extends HttpServlet {
                     // Output via a writer so can't use sendfile or write
                     // content directly.
                     if (resource.isDirectory()) {
-                        renderResult = render(getPathPrefix(request), resource);
+                        renderResult = render(getPathPrefix(request), resource, encoding);
                     } else {
                         renderResult = resource.getInputStream();
                     }
@@ -933,7 +975,7 @@ public class DefaultServlet extends HttpServlet {
                 } else {
                     // Output is via an InputStream
                     if (resource.isDirectory()) {
-                        renderResult = render(getPathPrefix(request), resource);
+                        renderResult = render(getPathPrefix(request), resource, encoding);
                     } else {
                         // Output is content of resource
                         if (!checkSendfile(request, response, resource,
@@ -1020,13 +1062,104 @@ public class DefaultServlet extends HttpServlet {
         }
     }
 
+    private boolean pathEndsWithCompressedExtension(String path) {
+        for (CompressionFormat format : compressionFormats) {
+            if (path.endsWith(format.extension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<PrecompressedResource> getAvailablePrecompressedResources(String path) {
+        List<PrecompressedResource> ret = new ArrayList<>(compressionFormats.length);
+        for (CompressionFormat format : compressionFormats) {
+            WebResource precompressedResource = resources.getResource(path + format.extension);
+            if (precompressedResource.exists() && precompressedResource.isFile()) {
+                ret.add(new PrecompressedResource(precompressedResource, format));
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Match the client preferred encoding formts to the available precompressed resources.
+     *
+     * @param request   The servlet request we are processing
+     * @param precompressedResources   List of available precompressed resources.
+     * @return The best matching precompressed resource or null if no match was found.
+     */
+    private PrecompressedResource getBestPrecompressedResource(HttpServletRequest request,
+            List<PrecompressedResource> precompressedResources) {
+        Enumeration<String> headers = request.getHeaders("Accept-Encoding");
+        PrecompressedResource bestResource = null;
+        double bestResourceQuality = 0;
+        int bestResourcePreference = Integer.MAX_VALUE;
+        while (headers.hasMoreElements()) {
+            String header = headers.nextElement();
+            for (String preference : header.split(",")) {
+                double quality = 1;
+                int qualityIdx = preference.indexOf(';');
+                if (qualityIdx > 0) {
+                    int equalsIdx = preference.indexOf('=', qualityIdx + 1);
+                    if (equalsIdx == -1) {
+                        continue;
+                    }
+                    quality = Double.parseDouble(preference.substring(equalsIdx + 1).trim());
+                }
+                if (quality >= bestResourceQuality) {
+                    String encoding = preference;
+                    if (qualityIdx > 0) {
+                        encoding = encoding.substring(0, qualityIdx);
+                    }
+                    encoding = encoding.trim();
+                    if ("identity".equals(encoding)) {
+                        bestResource = null;
+                        bestResourceQuality = quality;
+                        bestResourcePreference = Integer.MAX_VALUE;
+                        continue;
+                    }
+                    if ("*".equals(encoding)) {
+                        bestResource = precompressedResources.get(0);
+                        bestResourceQuality = quality;
+                        bestResourcePreference = 0;
+                        continue;
+                    }
+                    for (int i = 0; i < precompressedResources.size(); ++i) {
+                        PrecompressedResource resource = precompressedResources.get(i);
+                        if (encoding.equals(resource.format.encoding)) {
+                            if (quality > bestResourceQuality || i < bestResourcePreference) {
+                                bestResource = resource;
+                                bestResourceQuality = quality;
+                                bestResourcePreference = i;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return bestResource;
+    }
+
+    private void doDirectoryRedirect(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        StringBuilder location = new StringBuilder(request.getRequestURI());
+        location.append('/');
+        if (request.getQueryString() != null) {
+            location.append('?');
+            location.append(request.getQueryString());
+        }
+        response.sendRedirect(response.encodeRedirectURL(location.toString()));
+    }
 
     /**
      * Parse the content-range header.
      *
      * @param request The servlet request we a)re processing
      * @param response The servlet response we are creating
-     * @return Range
+     * @return the range object
+     * @throws IOException an IO error occurred
      */
     protected Range parseContentRange(HttpServletRequest request,
                                       HttpServletResponse response)
@@ -1088,7 +1221,8 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return Vector of ranges
+     * @return a list of ranges
+     * @throws IOException an IO error occurred
      */
     protected ArrayList<Range> parseRange(HttpServletRequest request,
             HttpServletResponse response,
@@ -1221,32 +1355,46 @@ public class DefaultServlet extends HttpServlet {
     }
 
 
-
     /**
-     *  Decide which way to render. HTML or XML.
+     * Decide which way to render. HTML or XML.
+     *
+     * @param contextPath The path
+     * @param resource    The resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the input stream with the rendered output
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
      */
-    protected InputStream render(String contextPath, WebResource resource)
+    protected InputStream render(String contextPath, WebResource resource, String encoding)
         throws IOException, ServletException {
 
         Source xsltSource = findXsltSource(resource);
 
         if (xsltSource == null) {
-            return renderHtml(contextPath, resource);
+            return renderHtml(contextPath, resource, encoding);
         }
-        return renderXml(contextPath, resource, xsltSource);
-
+        return renderXml(contextPath, resource, xsltSource, encoding);
     }
 
+
     /**
-     * Return an InputStream to an HTML representation of the contents
-     * of this directory.
+     * Return an InputStream to an XML representation of the contents this
+     * directory.
      *
-     * @param contextPath Context path to which our internal paths are
-     *  relative
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param xsltSource  The XSL stylesheet
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the XML data
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
      */
-    protected InputStream renderXml(String contextPath,
-                                    WebResource resource,
-                                    Source xsltSource)
+    protected InputStream renderXml(String contextPath, WebResource resource, Source xsltSource,
+            String encoding)
         throws IOException, ServletException {
 
         StringBuilder sb = new StringBuilder();
@@ -1312,7 +1460,7 @@ public class DefaultServlet extends HttpServlet {
         }
         sb.append("</entries>");
 
-        String readme = getReadme(resource);
+        String readme = getReadme(resource, encoding);
 
         if (readme!=null) {
             sb.append("<readme><![CDATA[");
@@ -1364,13 +1512,18 @@ public class DefaultServlet extends HttpServlet {
     }
 
     /**
-     * Return an InputStream to an HTML representation of the contents
-     * of this directory.
+     * Return an InputStream to an HTML representation of the contents of this
+     * directory.
      *
-     * @param contextPath Context path to which our internal paths are
-     *  relative
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the HTML data
+     *
+     * @throws IOException an IO error occurred
      */
-    protected InputStream renderHtml(String contextPath, WebResource resource)
+    protected InputStream renderHtml(String contextPath, WebResource resource, String encoding)
         throws IOException {
 
         // Prepare a writer to a buffered area
@@ -1491,7 +1644,7 @@ public class DefaultServlet extends HttpServlet {
 
         sb.append("<HR size=\"1\" noshade=\"noshade\">");
 
-        String readme = getReadme(resource);
+        String readme = getReadme(resource, encoding);
         if (readme!=null) {
             sb.append(readme);
             sb.append("<HR size=\"1\" noshade=\"noshade\">");
@@ -1515,6 +1668,7 @@ public class DefaultServlet extends HttpServlet {
      * Render the specified file size (in bytes).
      *
      * @param size File size (in bytes)
+     * @return the formatted size
      */
     protected String renderSize(long size) {
 
@@ -1530,19 +1684,34 @@ public class DefaultServlet extends HttpServlet {
 
     /**
      * Get the readme file as a string.
+     * @param directory The directory to search
+     * @param encoding The readme encoding
+     * @return the readme for the specified directory
      */
-    protected String getReadme(WebResource directory) {
+    protected String getReadme(WebResource directory, String encoding) {
 
         if (readmeFile != null) {
             WebResource resource = resources.getResource(
                     directory.getWebappPath() + readmeFile);
             if (resource.isFile()) {
                 StringWriter buffer = new StringWriter();
-                try (InputStream is = resource.getInputStream();
-                        InputStreamReader reader = new InputStreamReader(is)) {
+                InputStreamReader reader = null;
+                try (InputStream is = resource.getInputStream();){
+                    if (encoding != null) {
+                        reader = new InputStreamReader(is, encoding);
+                    } else {
+                        reader = new InputStreamReader(is);
+                    }
                     copyRange(reader, new PrintWriter(buffer));
                 } catch (IOException e) {
                     log("Failure to close reader", e);
+                } finally {
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                        }
+                    }
                 }
                 return buffer.toString();
             } else {
@@ -1558,7 +1727,10 @@ public class DefaultServlet extends HttpServlet {
 
 
     /**
-     * Return a Source for the xsl template (if possible)
+     * Return a Source for the xsl template (if possible).
+     * @param directory The directory to search
+     * @return the source for the specified directory
+     * @throws IOException an IO error occurred
      */
     protected Source findXsltSource(WebResource directory)
         throws IOException {
@@ -1688,6 +1860,14 @@ public class DefaultServlet extends HttpServlet {
 
     /**
      * Check if sendfile can be used.
+     * @param request The Servlet request
+     * @param response The Servlet response
+     * @param resource The resource
+     * @param length The length which will be written (will be used only if
+     *  range is null)
+     * @param range The range that will be written
+     * @return <code>true</code> if sendfile should be used (writing is then
+     *  delegated to the endpoint)
      */
     protected boolean checkSendfile(HttpServletRequest request,
                                   HttpServletResponse response,
@@ -1697,7 +1877,7 @@ public class DefaultServlet extends HttpServlet {
             && resource.isFile()
             && length > sendfileSize
             && (resource.getCanonicalPath() != null)
-            && (Boolean.TRUE == request.getAttribute(Globals.SENDFILE_SUPPORTED_ATTR))
+            && (Boolean.TRUE.equals(request.getAttribute(Globals.SENDFILE_SUPPORTED_ATTR)))
             && (request.getClass().getName().equals("org.apache.catalina.connector.RequestFacade"))
             && (response.getClass().getName().equals("org.apache.catalina.connector.ResponseFacade"))) {
             request.setAttribute(Globals.SENDFILE_FILENAME_ATTR, resource.getCanonicalPath());
@@ -1720,9 +1900,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfMatch(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -1763,9 +1944,9 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
      */
     protected boolean checkIfModifiedSince(HttpServletRequest request,
             HttpServletResponse response, WebResource resource) {
@@ -1799,9 +1980,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfNoneMatch(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -1849,33 +2031,15 @@ public class DefaultServlet extends HttpServlet {
     }
 
     /**
-     * Check if the user agent supports gzip encoding.
-     *
-     * @param request   The servlet request we are processing
-     * @return boolean true if the user agent supports gzip encoding,
-     * and false if the user agent does not support gzip encoding
-     */
-    protected boolean checkIfGzip(HttpServletRequest request) {
-        Enumeration<String> headers = request.getHeaders("Accept-Encoding");
-        while (headers.hasMoreElements()) {
-            String header = headers.nextElement();
-            if (header.indexOf("gzip") != -1) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    /**
      * Check if the if-unmodified-since condition is satisfied.
      *
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfUnmodifiedSince(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -2010,7 +2174,7 @@ public class DefaultServlet extends HttpServlet {
      * @param resource      The source resource
      * @param ostream       The output stream to write to
      * @param ranges        Enumeration of the ranges the client wanted to
- *                          retrieve
+     *                          retrieve
      * @param contentType   Content type of the resource
      * @exception IOException if an input/output error occurs
      */
@@ -2193,6 +2357,26 @@ public class DefaultServlet extends HttpServlet {
         }
     }
 
+    protected static class CompressionFormat implements Serializable {
+        private static final long serialVersionUID = 1L;
+        public final String extension;
+        public final String encoding;
+
+        public CompressionFormat(String extension, String encoding) {
+            this.extension = extension;
+            this.encoding = encoding;
+        }
+    }
+
+    private static class PrecompressedResource {
+        public final WebResource resource;
+        public final CompressionFormat format;
+
+        private PrecompressedResource(WebResource resource, CompressionFormat format) {
+            this.resource = resource;
+            this.format = format;
+        }
+    }
 
     /**
      * This is secure in the sense that any attempt to use an external entity

@@ -126,9 +126,10 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     // ------------------------------------------------------------- Properties
 
     /**
-     * The name used at remote MbeanServer
+     * Get the name used at remote MbeanServer.
+     *
+     * @return the name used at remote MbeanServer
      */
-
     public String getName() {
         return (this.name);
     }
@@ -196,7 +197,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * The login password for the <code>Manager</code> application.
+     * @return The login password for the <code>Manager</code> application.
      */
     public String getPassword() {
         return (this.password);
@@ -207,7 +208,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * The login username for the <code>JMX</code> MBeanServer.
+     * @return The login username for the <code>JMX</code> MBeanServer.
      */
     public String getUsername() {
         return (this.username);
@@ -218,9 +219,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * The URL of the <code>JMX JSR 160</code> MBeanServer to be used.
+     * @return The URL of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
-
     public String getUrl() {
         return (this.url);
     }
@@ -230,9 +230,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * The Host of the <code>JMX JSR 160</code> MBeanServer to be used.
+     * @return The Host of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
-
     public String getHost() {
         return (this.host);
     }
@@ -242,9 +241,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * The Port of the <code>JMX JSR 160</code> MBeanServer to be used.
+     * @return The Port of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
-
     public String getPort() {
         return (this.port);
     }
@@ -344,7 +342,18 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     }
 
     /**
-     * create a new JMX Connection with auth when username and password is set.
+     * Create a new JMX Connection with auth when username and password is set.
+     *
+     * @param url URL to be used for the JMX connection
+     *        (if specified, it is a complete URL so host and port will not
+     *        be used)
+     * @param host Host name of the JMX server
+     * @param port Port number for the JMX server
+     * @param username User name for the connection
+     * @param password Credentials corresponding to the specified user
+     * @throws MalformedURLException Invalid URL specified
+     * @throws IOException Other connection error
+     * @return the JMX connection
      */
     public static MBeanServerConnection createJMXConnection(String url,
             String host, String port, String username, String password)
@@ -396,9 +405,18 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     /**
      * Get Current Connection from <em>ref</em> parameter or create a new one!
      *
-     * @return The server connection
-     * @throws MalformedURLException
-     * @throws IOException
+     * @param project The Ant project
+     * @param url URL to be used for the JMX connection
+     *        (if specified, it is a complete URL so host and port will not
+     *        be used)
+     * @param host Host name of the JMX server
+     * @param port Port number for the JMX server
+     * @param username User name for the connection
+     * @param password Credentials corresponding to the specified user
+     * @param refId The Id of the reference to retrieve in the project
+     * @throws MalformedURLException Invalid URL specified
+     * @throws IOException Other connection error
+     * @return the JMX connection
      */
     @SuppressWarnings("null")
     public static MBeanServerConnection accessJMXConnection(Project project,
@@ -432,9 +450,9 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
     /**
      * get JMXConnection
      *
-     * @return The connection
-     * @throws MalformedURLException
-     * @throws IOException
+     * @throws MalformedURLException Invalid URL specified
+     * @throws IOException Other connection error
+     * @return the JMX connection
      */
     protected MBeanServerConnection getJMXConnection()
             throws MalformedURLException, IOException {
@@ -472,8 +490,9 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * input stream will be closed upon completion of this task, whether it was
      * executed successfully or not.
      *
-     * @exception Exception
-     *                if an error occurs
+     * @param jmxServerConnection The JMX connection that should be used
+     * @return An error message string in some situations
+     * @exception Exception if an error occurs
      */
     public String jmxExecute(MBeanServerConnection jmxServerConnection)
             throws Exception {
@@ -501,7 +520,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
         Object convertValue = value;
         if ("java.lang.Integer".equals(valueType) || "int".equals(valueType)) {
             try {
-                convertValue = new Integer(value);
+                convertValue = Integer.valueOf(value);
             } catch (NumberFormatException ex) {
                 if (isEcho())
                     handleErrorOutput("Unable to convert to integer:" + value);
@@ -509,7 +528,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
         } else if ("java.lang.Long".equals(valueType)
                 || "long".equals(valueType)) {
             try {
-                convertValue = new Long(value);
+                convertValue = Long.valueOf(value);
             } catch (NumberFormatException ex) {
                 if (isEcho())
                     handleErrorOutput("Unable to convert to long:" + value);
@@ -520,7 +539,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
         } else if ("java.lang.Float".equals(valueType)
                 || "float".equals(valueType)) {
             try {
-                convertValue = new Float(value);
+                convertValue = Float.valueOf(value);
             } catch (NumberFormatException ex) {
                 if (isEcho())
                     handleErrorOutput("Unable to convert to float:" + value);
@@ -528,7 +547,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
         } else if ("java.lang.Double".equals(valueType)
                 || "double".equals(valueType)) {
             try {
-                convertValue = new Double(value);
+                convertValue = Double.valueOf(value);
             } catch (NumberFormatException ex) {
                 if (isEcho())
                     handleErrorOutput("Unable to convert to double:" + value);
@@ -555,7 +574,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
 
     /**
      * @param name context of result
-     * @param result
+     * @param result The result
      */
     protected void echoResult(String name, Object result) {
         if (isEcho()) {
@@ -588,8 +607,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * option is that you delimit your result with a delimiter
      * (java.util.StringTokenizer is used).
      *
-     * @param propertyPrefix
-     * @param result
+     * @param propertyPrefix Prefix for the property
+     * @param result The result
      */
     protected void createProperty(String propertyPrefix, Object result) {
         if (propertyPrefix == null)

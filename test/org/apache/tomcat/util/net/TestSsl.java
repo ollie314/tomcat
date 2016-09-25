@@ -66,7 +66,7 @@ public class TestSsl extends TomcatBaseTest {
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
             "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        assertTrue(res.toString().indexOf("<a href=\"../helloworld.html\">") > 0);
     }
 
     @Test
@@ -86,7 +86,7 @@ public class TestSsl extends TomcatBaseTest {
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
             "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        assertTrue(res.toString().indexOf("<a href=\"../helloworld.html\">") > 0);
     }
 
 
@@ -95,13 +95,13 @@ public class TestSsl extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         Assume.assumeTrue("SSL renegotiation has to be supported for this test",
-                TesterSupport.isRenegotiationSupported(getTomcatInstance()));
+                TesterSupport.isClientRenegotiationSupported(getTomcatInstance()));
 
         Context root = tomcat.addContext("", TEMP_DIR);
         Wrapper w =
             Tomcat.addServlet(root, "tester", new TesterServlet());
         w.setAsyncSupported(true);
-        root.addServletMapping("/", "tester");
+        root.addServletMappingDecoded("/", "tester");
 
         TesterSupport.initSsl(tomcat);
 
@@ -147,7 +147,7 @@ public class TestSsl extends TomcatBaseTest {
     }
 
     private void doRequest(OutputStream os, Reader r) throws IOException {
-        char[] expectedResponseLine = "HTTP/1.1 200 OK\r\n".toCharArray();
+        char[] expectedResponseLine = "HTTP/1.1 200 \r\n".toCharArray();
 
         os.write("GET /tester HTTP/1.1\r\n".getBytes());
         os.write("Host: localhost\r\n".getBytes());

@@ -16,14 +16,14 @@
  */
 package org.apache.catalina.valves;
 
-
 import java.io.IOException;
 
 import javax.servlet.ServletException;
 
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
-
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 
 /**
  * Concrete implementation of <code>RequestFilterValve</code> that filters
@@ -34,6 +34,9 @@ import org.apache.catalina.connector.Response;
  */
 public final class RemoteHostValve extends RequestFilterValve {
 
+    private static final Log log = LogFactory.getLog(RemoteHostValve.class);
+
+
     // ----------------------------------------------------- Instance Variables
 
     /**
@@ -41,7 +44,7 @@ public final class RemoteHostValve extends RequestFilterValve {
      * compared in the filtering method. The port will be appended
      * using a ";" as a separator.
      */
-    protected volatile boolean addConnectorPort = false;
+    volatile boolean addConnectorPort = false;
 
     // ------------------------------------------------------------- Properties
 
@@ -50,6 +53,7 @@ public final class RemoteHostValve extends RequestFilterValve {
      * Get the flag deciding whether we add the server connector port to the
      * property compared in the filtering method. The port will be appended
      * using a ";" as a separator.
+     * @return <code>true</code> to add the connector port
      */
     public boolean getAddConnectorPort() {
         return addConnectorPort;
@@ -70,22 +74,8 @@ public final class RemoteHostValve extends RequestFilterValve {
 
     // --------------------------------------------------------- Public Methods
 
-    /**
-     * Extract the desired request property, and pass it (along with the
-     * specified request and response objects) to the protected
-     * <code>process()</code> method to perform the actual filtering.
-     * This method must be implemented by a concrete subclass.
-     *
-     * @param request The servlet request to be processed
-     * @param response The servlet response to be created
-     *
-     * @exception IOException if an input/output error occurs
-     * @exception ServletException if a servlet error occurs
-     */
     @Override
-    public void invoke(Request request, Response response)
-        throws IOException, ServletException {
-
+    public void invoke(Request request, Response response) throws IOException, ServletException {
         String property;
         if (addConnectorPort) {
             property = request.getRequest().getRemoteHost() + ";" + request.getConnector().getPort();
@@ -93,6 +83,11 @@ public final class RemoteHostValve extends RequestFilterValve {
             property = request.getRequest().getRemoteHost();
         }
         process(property, request, response);
+    }
 
+
+    @Override
+    protected Log getLog() {
+        return log;
     }
 }

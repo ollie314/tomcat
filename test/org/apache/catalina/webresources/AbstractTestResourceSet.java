@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.jar.Manifest;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -43,7 +44,7 @@ public abstract class AbstractTestResourceSet {
         return "";
     }
 
-    public abstract String getBaseDir();
+    public abstract File getBaseDir();
 
     @Before
     public final void setup() throws LifecycleException {
@@ -180,6 +181,7 @@ public abstract class AbstractTestResourceSet {
         optional.add(".svn");
         // Files visible in some tests only
         optional.add(getMount() + ".ignore-me.txt");
+        optional.add("META-INF");
 
         for (String result : results) {
             Assert.assertTrue(result,
@@ -273,6 +275,8 @@ public abstract class AbstractTestResourceSet {
         optional.add(getMount() + "/.svn/");
         // Files visible in some tests only
         optional.add(getMount() + "/.ignore-me.txt");
+        // Files visible in some configurations only
+        optional.add(getMount() + "/META-INF/");
 
         for (String result : results) {
             Assert.assertTrue(result,
@@ -378,16 +382,19 @@ public abstract class AbstractTestResourceSet {
 
     @Test
     public final void testMkdirNew() {
+        String newDirName = getNewDirName();
         if (isWriteable()) {
-            Assert.assertTrue(resourceRoot.mkdir(getMount() + "/new-test"));
+            Assert.assertTrue(resourceRoot.mkdir(getMount() + "/" + newDirName));
 
-            File file = new File(getBaseDir(), "new-test");
+            File file = new File(getBaseDir(), newDirName);
             Assert.assertTrue(file.isDirectory());
             Assert.assertTrue(file.delete());
         } else {
-            Assert.assertFalse(resourceRoot.mkdir(getMount() + "/new-test"));
+            Assert.assertFalse(resourceRoot.mkdir(getMount() + "/" + newDirName));
         }
     }
+
+    protected abstract String getNewDirName();
 
     //------------------------------------------------------------------ write()
 
@@ -445,24 +452,29 @@ public abstract class AbstractTestResourceSet {
     }
 
     @Test(expected = NullPointerException.class)
-    public final void testWriteNew() {
-        resourceRoot.write(getMount() + "/new-test", null, false);
+    public final void testWriteNull() {
+        resourceRoot.write(getMount() + "/" + getNewFileNameNull(), null, false);
     }
+
+    protected abstract String getNewFileNameNull();
 
     @Test
     public final void testWrite() {
+        String newFileName = getNewFileName();
         InputStream is = new ByteArrayInputStream("test".getBytes());
         if (isWriteable()) {
             Assert.assertTrue(resourceRoot.write(
-                    getMount() + "/new-test", is, false));
-            File file = new File(getBaseDir(), "new-test");
+                    getMount() + "/" + newFileName, is, false));
+            File file = new File(getBaseDir(), newFileName);
             Assert.assertTrue(file.exists());
             Assert.assertTrue(file.delete());
         } else {
             Assert.assertFalse(resourceRoot.write(
-                    getMount() + "/new-test", is, false));
+                    getMount() + "/" + newFileName, is, false));
         }
     }
+
+    protected abstract String getNewFileName();
 
     // ------------------------------------------------------ getCanonicalPath()
 
@@ -497,6 +509,21 @@ public abstract class AbstractTestResourceSet {
             Assert.assertNotNull(doesNotExistCanonicalPath);
         } else {
             Assert.assertNull(doesNotExistCanonicalPath);
+        }
+    }
+
+
+    // ----------------------------------------------------------- getManifest()
+
+    @Test
+    public final void testGetManifest() {
+        WebResource exists = resourceRoot.getResource(getMount() + "/d1/d1-f1.txt");
+        boolean manifestExists = resourceRoot.getResource("/META-INF/MANIFEST.MF").exists();
+        Manifest m = exists.getManifest();
+        if (getMount().equals("") && manifestExists) {
+            Assert.assertNotNull(m);
+        } else {
+            Assert.assertNull(m);
         }
     }
 

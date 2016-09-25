@@ -32,10 +32,10 @@ import javax.xml.parsers.SAXParserFactory;
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.descriptor.LocalResolver;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
-import org.apache.tomcat.util.scan.Jar;
 import org.apache.tomcat.util.security.PrivilegedGetTccl;
 import org.apache.tomcat.util.security.PrivilegedSetTccl;
 import org.xml.sax.Attributes;
@@ -605,11 +605,7 @@ class JspDocumentParser
                         lastCh = ch;
                     }
                 } else if (lastCh == '\\' && (ch == '$' || ch == '#')) {
-                    if (i + 1 < charBuffer.length() && charBuffer.charAt(i + 1) == '{') {
-                        if (pageInfo.isELIgnored()) {
-                            ttext.write('\\');
-                        }
-                    } else {
+                    if (pageInfo.isELIgnored()) {
                         ttext.write('\\');
                     }
                     ttext.write(ch);

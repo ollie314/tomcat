@@ -201,6 +201,8 @@ public class SSIMediator {
     /**
      * Applies variable substitution to the specified String and returns the
      * new resolved string.
+     * @param val The value which should be checked
+     * @return the value after variable substitution
      */
     public String substituteVariables(String val) {
         // If it has no references or HTML entities then no work
@@ -294,7 +296,7 @@ public class SSIMediator {
     protected String encode(String value, String encoding) {
         String retVal = null;
         if (encoding.equalsIgnoreCase("url")) {
-            retVal = urlEncoder.encode(value);
+            retVal = urlEncoder.encode(value, "UTF-8");
         } else if (encoding.equalsIgnoreCase("none")) {
             retVal = value;
         } else if (encoding.equalsIgnoreCase("entity")) {

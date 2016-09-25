@@ -37,13 +37,13 @@ public class Rfc6265CookieProcessor implements CookieProcessor {
     private static final BitSet domainValid = new BitSet(128);
 
     static {
-        for (char c = '0'; c < '9'; c++) {
+        for (char c = '0'; c <= '9'; c++) {
             domainValid.set(c);
         }
-        for (char c = 'a'; c < 'z'; c++) {
+        for (char c = 'a'; c <= 'z'; c++) {
             domainValid.set(c);
         }
-        for (char c = 'A'; c < 'Z'; c++) {
+        for (char c = 'A'; c <= 'Z'; c++) {
             domainValid.set(c);
         }
         domainValid.set('.');
@@ -73,8 +73,11 @@ public class Rfc6265CookieProcessor implements CookieProcessor {
 
             if (cookieValue != null && !cookieValue.isNull() ) {
                 if (cookieValue.getType() != MessageBytes.T_BYTES ) {
-                    Exception e = new Exception();
-                    log.warn("Cookies: Parsing cookie as String. Expected bytes.", e);
+                    if (log.isDebugEnabled()) {
+                        Exception e = new Exception();
+                        // TODO: Review this in light of HTTP/2
+                        log.debug("Cookies: Parsing cookie as String. Expected bytes.", e);
+                    }
                     cookieValue.toBytes();
                 }
                 if (log.isDebugEnabled()) {
@@ -96,7 +99,7 @@ public class Rfc6265CookieProcessor implements CookieProcessor {
     public String generateHeader(javax.servlet.http.Cookie cookie) {
 
         StringBuilder header = new StringBuilder();
-        // TODO: Name validation takes place in Cookie and can not be configured
+        // TODO: Name validation takes place in Cookie and cannot be configured
         //       per Context. Moving it to here would allow per Context config
         //       but delay validation until the header is generated. However,
         //       the spec requires an IllegalArgumentException on Cookie

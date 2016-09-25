@@ -38,8 +38,8 @@ import org.apache.jasper.EmbeddedServletOptions;
 import org.apache.jasper.Options;
 import org.apache.jasper.compiler.JspRuntimeContext;
 import org.apache.jasper.compiler.Localizer;
+import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.jasper.security.SecurityUtil;
-import org.apache.jasper.util.ExceptionUtils;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.PeriodicEventListener;
@@ -71,8 +71,8 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
     private ServletConfig config;
     private transient Options options;
     private transient JspRuntimeContext rctxt;
-    //jspFile for a jsp configured explicitly as a servlet, in environments where this configuration is
-    //translated into an init-param for this servlet.
+    // jspFile for a jsp configured explicitly as a servlet, in environments where this
+    // configuration is translated into an init-param for this servlet.
     private String jspFile;
 
 
@@ -88,19 +88,19 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
 
         // Initialize the JSP Runtime Context
         // Check for a custom Options implementation
-        String engineOptionsName =
-            config.getInitParameter("engineOptionsClass");
+        String engineOptionsName = config.getInitParameter("engineOptionsClass");
+        if (Constants.IS_SECURITY_ENABLED && engineOptionsName != null) {
+            log.info(Localizer.getMessage(
+                    "jsp.info.ignoreSetting", "engineOptionsClass", engineOptionsName));
+            engineOptionsName = null;
+        }
         if (engineOptionsName != null) {
             // Instantiate the indicated Options implementation
             try {
-                ClassLoader loader = Thread.currentThread()
-                        .getContextClassLoader();
-                Class<?> engineOptionsClass =
-                    loader.loadClass(engineOptionsName);
-                Class<?>[] ctorSig =
-                    { ServletConfig.class, ServletContext.class };
-                Constructor<?> ctor =
-                    engineOptionsClass.getConstructor(ctorSig);
+                ClassLoader loader = Thread.currentThread().getContextClassLoader();
+                Class<?> engineOptionsClass = loader.loadClass(engineOptionsName);
+                Class<?>[] ctorSig = { ServletConfig.class, ServletContext.class };
+                Constructor<?> ctor = engineOptionsClass.getConstructor(ctorSig);
                 Object[] args = { config, context };
                 options = (Options) ctor.newInstance(args);
             } catch (Throwable e) {
@@ -123,7 +123,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                     return;
                 }
             } catch (MalformedURLException e) {
-                throw new ServletException("Can not locate jsp file", e);
+                throw new ServletException("cannot locate jsp file", e);
             }
             try {
                 if (SecurityUtil.isPackageProtectionEnabled()){
@@ -235,38 +235,38 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
 
         String queryString = request.getQueryString();
         if (queryString == null) {
-            return (false);
+            return false;
         }
         int start = queryString.indexOf(Constants.PRECOMPILE);
         if (start < 0) {
-            return (false);
+            return false;
         }
         queryString =
             queryString.substring(start + Constants.PRECOMPILE.length());
         if (queryString.length() == 0) {
-            return (true);             // ?jsp_precompile
+            return true;             // ?jsp_precompile
         }
         if (queryString.startsWith("&")) {
-            return (true);             // ?jsp_precompile&foo=bar...
+            return true;             // ?jsp_precompile&foo=bar...
         }
         if (!queryString.startsWith("=")) {
-            return (false);            // part of some other name or value
+            return false;            // part of some other name or value
         }
         int limit = queryString.length();
-        int ampersand = queryString.indexOf("&");
+        int ampersand = queryString.indexOf('&');
         if (ampersand > 0) {
             limit = ampersand;
         }
         String value = queryString.substring(1, limit);
         if (value.equals("true")) {
-            return (true);             // ?jsp_precompile=true
+            return true;             // ?jsp_precompile=true
         } else if (value.equals("false")) {
             // Spec says if jsp_precompile=false, the request should not
             // be delivered to the JSP page; the easiest way to implement
             // this is to set the flag to true, and precompile the page anyway.
             // This still conforms to the spec, since it says the
             // precompilation request can be ignored.
-            return (true);             // ?jsp_precompile=false
+            return true;             // ?jsp_precompile=false
         } else {
             throw new ServletException("Cannot have request parameter " +
                                        Constants.PRECOMPILE + " set to " +
@@ -276,24 +276,13 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
     }
 
 
-    @SuppressWarnings("deprecation") // Use of JSP_FILE to be removed in 9.0.x
     @Override
-    public void service (HttpServletRequest request,
-                             HttpServletResponse response)
-                throws ServletException, IOException {
+    public void service (HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
 
-        //jspFile may be configured as an init-param for this servlet instance
+        // jspFile may be configured as an init-param for this servlet instance
         String jspUri = jspFile;
 
-        if (jspUri == null) {
-            // JSP specified via <jsp-file> in <servlet> declaration and
-            // supplied through custom servlet container code
-            String jspFile = (String) request.getAttribute(Constants.JSP_FILE);
-            if (jspFile != null) {
-                jspUri = jspFile;
-                request.removeAttribute(Constants.JSP_FILE);
-            }
-        }
         if (jspUri == null) {
             /*
              * Check to see if the requested JSP has been the target of a

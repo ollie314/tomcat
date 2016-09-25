@@ -38,8 +38,8 @@ import javax.servlet.ServletContext;
 import org.apache.jasper.Constants;
 import org.apache.jasper.JspCompilationContext;
 import org.apache.jasper.Options;
+import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.jasper.servlet.JspServletWrapper;
-import org.apache.jasper.util.ExceptionUtils;
 import org.apache.jasper.util.FastRemovalDequeue;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -59,15 +59,17 @@ import org.apache.juli.logging.LogFactory;
  */
 public final class JspRuntimeContext {
 
-    // Logger
+    /**
+     * Logger
+     */
     private final Log log = LogFactory.getLog(JspRuntimeContext.class);
 
-    /*
+    /**
      * Counts how many times the webapp's JSPs have been reloaded.
      */
     private final AtomicInteger jspReloadCount = new AtomicInteger(0);
 
-    /*
+    /**
      * Counts how many times JSPs have been unloaded in this webapp.
      */
     private final AtomicInteger jspUnloadCount = new AtomicInteger(0);
@@ -80,6 +82,7 @@ public final class JspRuntimeContext {
      * Loads in any previously generated dependencies from file.
      *
      * @param context ServletContext for web application
+     * @param options The main Jasper options
      */
     public JspRuntimeContext(ServletContext context, Options options) {
 
@@ -160,8 +163,7 @@ public final class JspRuntimeContext {
     /**
      * Maps JSP pages to their JspServletWrapper's
      */
-    private final Map<String, JspServletWrapper> jsps =
-            new ConcurrentHashMap<>();
+    private final Map<String, JspServletWrapper> jsps = new ConcurrentHashMap<>();
 
     /**
      * Keeps JSP pages ordered by last access.
@@ -375,14 +377,14 @@ public final class JspRuntimeContext {
     }
 
     /**
-     * The classpath that is passed off to the Java compiler.
+     * @return the classpath that is passed off to the Java compiler.
      */
     public String getClassPath() {
         return classpath;
     }
 
     /**
-     * Last time the update background task has run
+     * @return Last time the update background task has run
      */
     public long getLastJspQueueUpdate() {
         return lastJspQueueUpdate;
@@ -394,6 +396,7 @@ public final class JspRuntimeContext {
 
     /**
      * Method used to initialize classpath for compiles.
+     * @return the compilation classpath
      */
     private String initClassPath() {
 
@@ -435,7 +438,9 @@ public final class JspRuntimeContext {
         return path;
     }
 
-    // Helper class to allow initSecurity() to return two items
+    /**
+     * Helper class to allow initSecurity() to return two items
+     */
     private static class SecurityHolder{
         private final CodeSource cs;
         private final PermissionCollection pc;

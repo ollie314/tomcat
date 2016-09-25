@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -277,15 +277,26 @@
     <attribute name="testOnBorrow" required="false">
       <p>(boolean) The indication of whether objects will be validated before being borrowed from the pool.
          If the object fails to validate, it will be dropped from the pool, and we will attempt to borrow another.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code> parameter must be set to a non-null string.
+         NOTE - for a true value to have any effect, the <code>validationQuery</code>
+         or <code>validatorClassName</code> parameter must be set to a non-null string.
          In order to have a more efficient validation, see <code>validationInterval</code>.
+         Default value is <code>false</code>
+      </p>
+    </attribute>
+
+    <attribute name="testOnConnect" required="false">
+      <p>(boolean) The indication of whether objects will be validated when a connection is first created.
+         If an object fails to validate, it will be throw <code>SQLException</code>.
+         NOTE - for a true value to have any effect, the <code>validationQuery</code>, <code>initSQL</code>
+         or <code>validatorClassName</code> parameter must be set to a non-null string.
          Default value is <code>false</code>
       </p>
     </attribute>
 
     <attribute name="testOnReturn" required="false">
       <p>(boolean) The indication of whether objects will be validated before being returned to the pool.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code> parameter must be set to a non-null string.
+         NOTE - for a true value to have any effect, the <code>validationQuery</code>
+         or <code>validatorClassName</code> parameter must be set to a non-null string.
          The default value is <code>false</code>.
       </p>
     </attribute>
@@ -293,7 +304,8 @@
     <attribute name="testWhileIdle" required="false">
       <p>(boolean) The indication of whether objects will be validated by the idle object evictor (if any).
          If an object fails to validate, it will be dropped from the pool.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code> parameter must be set to a non-null string.
+         NOTE - for a true value to have any effect, the <code>validationQuery</code>
+         or <code>validatorClassName</code> parameter must be set to a non-null string.
          The default value is <code>false</code> and this property has to be set in order for the
          pool cleaner/test thread is to run (also see <code>timeBetweenEvictionRunsMillis</code>)
       </p>
@@ -458,11 +470,17 @@
     </attribute>
 
     <attribute name="maxAge" required="false">
-      <p>(long) Time in milliseconds to keep this connection. When a connection is returned to the pool,
-         the pool will check to see if the <code>now - time-when-connected > maxAge</code> has been reached,
-         and if so, it closes the connection rather than returning it to the pool.
-         The default value is <code>0</code>, which implies that connections will be left open and no age check
-         will be done upon returning the connection to the pool.</p>
+      <p>(long) Time in milliseconds to keep this connection. This attribute
+         works both when returning connection and when borrowing connection.
+         When a connection is borrowed from the pool, the pool will check to see
+         if the <code>now - time-when-connected > maxAge</code> has been reached
+         , and if so, it reconnects before borrow it. When a connection is
+         returned to the pool, the pool will check to see if the
+         <code>now - time-when-connected > maxAge</code> has been reached, and
+         if so, it closes the connection rather than returning it to the pool.
+         The default value is <code>0</code>, which implies that connections
+         will be left open and no age check will be done upon borrowing from the
+         pool and returning the connection to the pool.</p>
     </attribute>
 
     <attribute name="useEquals" required="false">
@@ -508,7 +526,7 @@
          and reopened with the requested credentials. This way, the pool size is still managed
          on a global level, and not on a per schema level. <br/>
          The default value is <code>false</code>.<br/>
-         This property was added as an enhancement to <a href="https://issues.apache.org/bugzilla/show_bug.cgi?id=50025">bug 50025</a>.
+         This property was added as an enhancement to <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=50025">bug 50025</a>.
       </p>
     </attribute>
     <attribute name="dataSource" required="false">
@@ -588,7 +606,7 @@
     </p>
   </subsection>
   <subsection name="org.apache.tomcat.jdbc.pool.JdbcInterceptor">
-    <p>Abstract base class for all interceptors, can not be instantiated.</p>
+    <p>Abstract base class for all interceptors, cannot be instantiated.</p>
     <attributes>
       <attribute name="useEquals" required="false">
         <p>(boolean) Set to true if you wish the <code>ProxyConnection</code> class to use <code>String.equals</code> and set to <code>false</code>
@@ -663,8 +681,9 @@
     </p>
     <attributes>
       <attribute name="queryTimeout" required="true">
-        <p>(int as String) The number of seconds to set for the query timeout
-           The default value is <code>1000</code> milliseconds.
+        <p>(int as String) The number of seconds to set for the query timeout.
+           A value less than or equal to zero will disable this feature.
+           The default value is <code>1</code> seconds.
         </p>
       </attribute>
     </attributes>
@@ -681,6 +700,7 @@
       </attribute>
       <attribute name="maxQueries" required="false">
         <p>(int as String) The maximum number of queries to keep track of in order to preserve memory space.
+           A value less than or equal to 0 will disable this feature.
            The default value is <code>1000</code>.
         </p>
       </attribute>
@@ -691,7 +711,7 @@
       </attribute>
       <attribute name="logFailed" required="false">
         <p>(boolean as String) Set to <code>true</code> if you wish to log failed queries.
-            The default value is <code>true</code>.
+            The default value is <code>false</code>.
         </p>
       </attribute>
     </attributes>

@@ -462,34 +462,6 @@ public class Stream extends AbstractStream implements HeaderEmitter {
          */
 
         @Override
-        public synchronized int doWrite(ByteChunk chunk) throws IOException {
-            if (closed) {
-                throw new IllegalStateException(
-                        sm.getString("stream.closed", getConnectionId(), getIdentifier()));
-            }
-            if (!coyoteResponse.isCommitted()) {
-                coyoteResponse.sendHeaders();
-            }
-            int len = chunk.getLength();
-            int offset = 0;
-            while (len > 0) {
-                int thisTime = Math.min(buffer.remaining(), len);
-                buffer.put(chunk.getBytes(), chunk.getOffset() + offset, thisTime);
-                offset += thisTime;
-                len -= thisTime;
-                if (len > 0 && !buffer.hasRemaining()) {
-                    // Only flush if we have more data to write and the buffer
-                    // is full
-                    if (flush(true, coyoteResponse.getWriteListener() == null)) {
-                        break;
-                    }
-                }
-            }
-            written += offset;
-            return offset;
-        }
-
-        @Override
         public synchronized int doWrite(ByteBuffer chunk) throws IOException {
             if (closed) {
                 throw new IllegalStateException(
@@ -555,7 +527,6 @@ public class Stream extends AbstractStream implements HeaderEmitter {
                             !writeInProgress && closed && left == connectionReservation);
                     streamReservation -= connectionReservation;
                     left -= connectionReservation;
-                    buffer.position(buffer.position() + connectionReservation);
                 }
             }
             buffer.clear();

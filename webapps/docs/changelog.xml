@@ -89,6 +89,15 @@
         <code>ResourceLink</code> fails to specify the type, specifies an
         unknown type or specifies the wrong type. (markt)
       </add>
+      <fix>
+        <bug>60167</bug>: Ignore empty lines in <code>/etc/passwd</code> files
+        when using the <code>PasswdUserDatabase</code>. (markt)
+      </fix>
+      <fix>
+        <bug>60170</bug>: Exclude the compressed test file
+        <code>index.html.br</code> from RAT analysis. Patch provided by Gavin
+        McDonald. (markt)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="Coyote">
@@ -111,6 +120,10 @@
         <bug>60123</bug>: Avoid potential threading issues that could cause
         excessively large vales to be returned for the processing time of
         a current request. (markt)
+      </fix>
+      <fix>
+        <bug>60174</bug>: Log instances of <code>HeadersTooLargeException</code>
+        during request processing. (markt)
       </fix>
     </changelog>
   </subsection>
@@ -639,7 +652,7 @@
         connection is borrowed. (kfujino)
       </fix>
       <fix>
-        <bug>59774</bug>: Correct the <code>prefix</code> values in the the
+        <bug>59774</bug>: Correct the <code>prefix</code> values in the
         documented examples for configuring the <code>AccessLogValve</code>.
         Patch provided by Mike Noordermeer. (markt)
       </fix>
@@ -957,7 +970,7 @@
         session count below <code>maxActiveSessions</code>. (markt)
       </fix>
       <update>
-        Update the implementation of the the proposed Servlet 4.0 API to provide
+        Update the implementation of the proposed Servlet 4.0 API to provide
         mapping type information for the current request to reflect discussions
         within the EG. (markt)
       </update>
@@ -1145,7 +1158,7 @@
       </fix>
       <fix>
         Fix a regression caused by the connector refactoring and ensure that the
-        thread context class loader is set to the to the web application
+        thread context class loader is set to the web application
         classloader when processing WebSocket messages on the server. (markt)
       </fix>
       <fix>
@@ -1450,7 +1463,7 @@
         <bug>57583</bug>: Improve the performance of
         <code>javax.servlet.jsp.el.ScopedAttributeELResolver</code> when
         resolving attributes that do not exist. This improvement only works when
-        Jasper is used with with Tomcat's EL implementation. (markt)
+        Jasper is used with Tomcat's EL implementation. (markt)
       </fix>
     </changelog>
   </subsection>

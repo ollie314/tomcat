@@ -1306,31 +1306,6 @@ public class AjpProcessor extends AbstractProcessor {
     }
 
 
-    private void writeData(ByteChunk chunk) throws IOException {
-        boolean blocking = (response.getWriteListener() == null);
-
-        int len = chunk.getLength();
-        int off = 0;
-
-        // Write this chunk
-        while (len > 0) {
-            int thisTime = Math.min(len, outputMaxChunkSize);
-
-            responseMessage.reset();
-            responseMessage.appendByte(Constants.JK_AJP13_SEND_BODY_CHUNK);
-            responseMessage.appendBytes(chunk.getBytes(), chunk.getOffset() + off, thisTime);
-            responseMessage.end();
-            socketWrapper.write(blocking, responseMessage.getBuffer(), 0, responseMessage.getLen());
-            socketWrapper.flush(blocking);
-
-            len -= thisTime;
-            off += thisTime;
-        }
-
-        bytesWritten += off;
-    }
-
-
     private void writeData(ByteBuffer chunk) throws IOException {
         boolean blocking = (response.getWriteListener() == null);
 
@@ -1402,24 +1377,6 @@ public class AjpProcessor extends AbstractProcessor {
      * stream.
      */
     protected class SocketOutputBuffer implements OutputBuffer {
-
-        @Override
-        public int doWrite(ByteChunk chunk) throws IOException {
-
-            if (!response.isCommitted()) {
-                // Validate and write response headers
-                try {
-                    prepareResponse();
-                } catch (IOException e) {
-                    setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
-                }
-            }
-
-            if (!swallowResponse) {
-                writeData(chunk);
-            }
-            return chunk.getLength();
-        }
 
         @Override
         public int doWrite(ByteBuffer chunk) throws IOException {

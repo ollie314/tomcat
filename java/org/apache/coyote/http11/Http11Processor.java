@@ -197,7 +197,7 @@ public class Http11Processor extends AbstractProcessor {
 
     /*
      * Should application provider values for the HTTP Server header be removed.
-     * Note that if {@link #server} is set, any application provided vale will
+     * Note that if {@link #server} is set, any application provided value will
      * be over-ridden.
      */
     private boolean serverRemoveAppProvidedValues = false;
@@ -794,6 +794,7 @@ public class Http11Processor extends AbstractProcessor {
                 } catch (InterruptedIOException e) {
                     setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
                 } catch (HeadersTooLargeException e) {
+                    log.error(sm.getString("http11processor.request.process"), e);
                     // The response should not have been committed but check it
                     // anyway to be safe
                     if (response.isCommitted()) {

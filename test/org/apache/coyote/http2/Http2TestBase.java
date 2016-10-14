@@ -305,11 +305,31 @@ public abstract class Http2TestBase extends TomcatBaseTest {
         ByteUtil.set31Bits(dataFrameHeader, 5, streamId);
     }
 
+
     protected void writeFrame(byte[] header, ByteBuffer payload)
             throws IOException {
+        writeFrame(header, payload, 0, payload.limit());
+    }
+
+
+    protected void writeFrame(byte[] header, ByteBuffer payload, int offset, int len)
+            throws IOException {
+        writeFrame(header, payload, offset, len, 0);
+    }
+
+
+    protected void writeFrame(byte[] header, ByteBuffer payload, int offset, int len, int delayms)
+            throws IOException {
         os.write(header);
-        os.write(payload.array(), payload.arrayOffset(), payload.limit());
+        os.write(payload.array(), payload.arrayOffset() + offset, len);
         os.flush();
+        if (delayms > 0) {
+            try {
+                Thread.sleep(delayms);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+        }
     }
 
 
@@ -582,7 +602,7 @@ public abstract class Http2TestBase extends TomcatBaseTest {
         pingHeader[3] = FrameType.PING.getIdByte();
         // Flags
         if (ack) {
-            ByteUtil.setOneBytes(pingHeader, 4, 0x01);
+            setOneBytes(pingHeader, 4, 0x01);
         }
         // Stream
         ByteUtil.set31Bits(pingHeader, 5, streamId);
@@ -659,7 +679,7 @@ public abstract class Http2TestBase extends TomcatBaseTest {
 
         // Payload
         ByteUtil.set31Bits(priorityFrame, 9, streamDependencyId);
-        ByteUtil.setOneBytes(priorityFrame, 13, weight);
+        setOneBytes(priorityFrame, 13, weight);
 
         os.write(priorityFrame);
         os.flush();
@@ -698,6 +718,11 @@ public abstract class Http2TestBase extends TomcatBaseTest {
 
         os.write(settingFrame);
         os.flush();
+    }
+
+
+    static void setOneBytes(byte[] output, int firstByte, int value) {
+        output[firstByte] = (byte) (value & 0xFF);
     }
 
 
@@ -786,7 +811,7 @@ public abstract class Http2TestBase extends TomcatBaseTest {
 
 
         @Override
-        public void emitHeader(String name, String value, boolean neverIndex) {
+        public void emitHeader(String name, String value) {
             // Date headers will always change so use a hard-coded default
             if ("date".equals(name)) {
                 value = DEFAULT_DATE;
@@ -888,6 +913,11 @@ public abstract class Http2TestBase extends TomcatBaseTest {
 
         public String getTrace() {
             return trace.toString();
+        }
+
+
+        public int getMaxFrameSize() {
+            return remoteSettings.getMaxFrameSize();
         }
     }
 

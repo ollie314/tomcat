@@ -538,61 +538,45 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
     @Override
     public void init() throws Exception {
-        if (getLog().isInfoEnabled())
-            getLog().info(sm.getString("abstractProtocolHandler.init",
-                    getName()));
+        if (getLog().isInfoEnabled()) {
+            getLog().info(sm.getString("abstractProtocolHandler.init", getName()));
+        }
 
         if (oname == null) {
             // Component not pre-registered so register it
             oname = createObjectName();
             if (oname != null) {
-                Registry.getRegistry(null, null).registerComponent(this, oname,
-                    null);
+                Registry.getRegistry(null, null).registerComponent(this, oname, null);
             }
         }
 
         if (this.domain != null) {
             try {
-                tpOname = new ObjectName(domain + ":" +
-                        "type=ThreadPool,name=" + getName());
-                Registry.getRegistry(null, null).registerComponent(endpoint,
-                        tpOname, null);
+                tpOname = new ObjectName(domain + ":" + "type=ThreadPool,name=" + getName());
+                Registry.getRegistry(null, null).registerComponent(endpoint, tpOname, null);
             } catch (Exception e) {
-                getLog().error(sm.getString(
-                        "abstractProtocolHandler.mbeanRegistrationFailed",
+                getLog().error(sm.getString( "abstractProtocolHandler.mbeanRegistrationFailed",
                         tpOname, getName()), e);
             }
-            rgOname=new ObjectName(domain +
-                    ":type=GlobalRequestProcessor,name=" + getName());
+            rgOname = new ObjectName(domain + ":type=GlobalRequestProcessor,name=" + getName());
             Registry.getRegistry(null, null).registerComponent(
-                    getHandler().getGlobal(), rgOname, null );
+                    getHandler().getGlobal(), rgOname, null);
         }
 
         String endpointName = getName();
         endpoint.setName(endpointName.substring(1, endpointName.length()-1));
 
-        try {
-            endpoint.init();
-        } catch (Exception ex) {
-            getLog().error(sm.getString("abstractProtocolHandler.initError",
-                    getName()), ex);
-            throw ex;
-        }
+        endpoint.init();
     }
 
 
     @Override
     public void start() throws Exception {
-        if (getLog().isInfoEnabled())
-            getLog().info(sm.getString("abstractProtocolHandler.start",
-                    getNameInternal()));
-        try {
-            endpoint.start();
-        } catch (Exception ex) {
-            getLog().error(sm.getString("abstractProtocolHandler.startError",
-                    getNameInternal()), ex);
-            throw ex;
+        if (getLog().isInfoEnabled()) {
+            getLog().info(sm.getString("abstractProtocolHandler.start", getNameInternal()));
         }
+
+        endpoint.start();
 
         // Start async timeout thread
         asyncTimeout = new AsyncTimeout();
@@ -605,86 +589,68 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
     @Override
     public void pause() throws Exception {
-        if(getLog().isInfoEnabled())
-            getLog().info(sm.getString("abstractProtocolHandler.pause",
-                    getName()));
-        try {
-            endpoint.pause();
-        } catch (Exception ex) {
-            getLog().error(sm.getString("abstractProtocolHandler.pauseError",
-                    getName()), ex);
-            throw ex;
+        if (getLog().isInfoEnabled()) {
+            getLog().info(sm.getString("abstractProtocolHandler.pause", getName()));
         }
+
+        endpoint.pause();
     }
+
 
     @Override
     public void resume() throws Exception {
-        if(getLog().isInfoEnabled())
-            getLog().info(sm.getString("abstractProtocolHandler.resume",
-                    getName()));
-        try {
-            endpoint.resume();
-        } catch (Exception ex) {
-            getLog().error(sm.getString("abstractProtocolHandler.resumeError",
-                    getName()), ex);
-            throw ex;
+        if(getLog().isInfoEnabled()) {
+            getLog().info(sm.getString("abstractProtocolHandler.resume", getName()));
         }
+
+        endpoint.resume();
     }
 
 
     @Override
     public void stop() throws Exception {
-        if(getLog().isInfoEnabled())
-            getLog().info(sm.getString("abstractProtocolHandler.stop",
-                    getName()));
+        if(getLog().isInfoEnabled()) {
+            getLog().info(sm.getString("abstractProtocolHandler.stop", getName()));
+        }
 
         if (asyncTimeout != null) {
             asyncTimeout.stop();
         }
 
-        try {
-            endpoint.stop();
-        } catch (Exception ex) {
-            getLog().error(sm.getString("abstractProtocolHandler.stopError",
-                    getName()), ex);
-            throw ex;
-        }
+        endpoint.stop();
     }
 
 
     @Override
-    public void destroy() {
+    public void destroy() throws Exception {
         if(getLog().isInfoEnabled()) {
-            getLog().info(sm.getString("abstractProtocolHandler.destroy",
-                    getName()));
+            getLog().info(sm.getString("abstractProtocolHandler.destroy", getName()));
         }
+
         try {
             endpoint.destroy();
-        } catch (Exception e) {
-            getLog().error(sm.getString("abstractProtocolHandler.destroyError",
-                    getName()), e);
-        }
-
-        if (oname != null) {
-            if (mserver == null) {
-                Registry.getRegistry(null, null).unregisterComponent(oname);
-            } else {
-                // Possibly registered with a different MBeanServer
-                try {
-                    mserver.unregisterMBean(oname);
-                } catch (MBeanRegistrationException |
-                        InstanceNotFoundException e) {
-                    getLog().info(sm.getString(
-                            "abstractProtocol.mbeanDeregistrationFailed",
-                            oname, mserver));
+        } finally {
+            if (oname != null) {
+                if (mserver == null) {
+                    Registry.getRegistry(null, null).unregisterComponent(oname);
+                } else {
+                    // Possibly registered with a different MBeanServer
+                    try {
+                        mserver.unregisterMBean(oname);
+                    } catch (MBeanRegistrationException | InstanceNotFoundException e) {
+                        getLog().info(sm.getString("abstractProtocol.mbeanDeregistrationFailed",
+                                oname, mserver));
+                    }
                 }
             }
-        }
 
-        if (tpOname != null)
-            Registry.getRegistry(null, null).unregisterComponent(tpOname);
-        if (rgOname != null)
-            Registry.getRegistry(null, null).unregisterComponent(rgOname);
+            if (tpOname != null) {
+                Registry.getRegistry(null, null).unregisterComponent(tpOname);
+            }
+            if (rgOname != null) {
+                Registry.getRegistry(null, null).unregisterComponent(rgOname);
+            }
+        }
     }
 
 

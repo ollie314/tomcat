@@ -44,7 +44,58 @@
   They eventually become mixed with the numbered issues. (I.e., numbered
   issues do not "pop up" wrt. others).
 -->
-<section name="Tomcat 9.0.0.M11" rtext="in development">
+<section name="Tomcat 9.0.0.M12" rtext="in development">
+  <subsection name="Catalina">
+    <changelog>
+      <fix>
+        When creating a new Connector via JMX, ensure that both HTTP/1.1 and
+        AJP/1.3 connectors can be created. (markt)
+      </fix>
+      <fix>
+        Reduce multiple error messages when Connector fails to instantiate the
+        associated ProtocolHandler. (markt)
+      </fix>
+      <fix>
+        <bug>60152</bug>: Provide an option for Connector Lifecycle exceptions
+        to be re-thrown rather than logged. This is controlled by the new
+        <code>throwOnFailure</code> attribute of the Connector. (markt)
+      </fix>
+      <fix>
+        Include the Context name in the log message when an item cannot be
+        added to the cache. (markt)
+      </fix>
+      <fix>
+        Exclude JAR files in <code>/WEB-INF/lib</code> from the static resource
+        cache. (markt)
+      </fix>
+      <fix>
+        When calling <code>getResourceAsStream()</code> on a directory, ensure
+        that <code>null</code> is returned. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Coyote">
+    <changelog>
+      <fix>
+        Correct the HPACK header table size configuration that transposed the
+        client and server table sizes when creating the encoder and decoder.
+        (markt)
+      </fix>
+      <scode>
+        Review HTTP/2 implementation removing unused code, reducing visibility
+        where possible and using final where appropriate. (markt)
+      </scode>
+    </changelog>
+  </subsection>
+  <subsection name="Jasper">
+    <changelog>
+      <update>
+        Update to the Eclipse JDT Compiler 4.6.1. (markt)
+      </update>
+    </changelog>
+  </subsection>
+</section>
+<section name="Tomcat 9.0.0.M11" rtext="2016-10-10">
   <subsection name="Catalina">
     <changelog>
       <add>
@@ -54,10 +105,20 @@
       </add>
       <fix>
         <bug>60013</bug>: Refactor the previous fix to align the behaviour of
-        the Rewrite Valve with mod_rewite. As part of this, provide an
+        the Rewrite Valve with mod_rewrite. As part of this, provide an
         implementation for the <code>B</code> and <code>NE</code> flags and
         improve the handling for the <code>QSA</code> flag. Includes multiple
         test cases by Santhana Preethiand a patch by Tiago Oliveira. (markt)
+      </fix>
+      <fix>
+        <bug>60087</bug>: Refactor the web resources handling to use the Tomcat
+        specific <code>war:file:...</code> URL protocol to refer to WAR files
+        and their contents rather than the standard <code>jar:file:...</code>
+        form since some components of the JRE, such as JAR verification, give
+        unexpected results when the standard form is used. A side-effect of the
+        refactoring is that when using packed WARs, it is now possible to
+        reference a WAR and/or specific JARs within a WAR in the security policy
+        file used when running under a <code>SecurityManager</code>. (markt)
       </fix>
       <fix>
         <bug>60116</bug>: Fix a problem with the rewrite valve that caused back
@@ -98,6 +159,28 @@
         <code>index.html.br</code> from RAT analysis. Patch provided by Gavin
         McDonald. (markt)
       </fix>
+      <fix>
+        When starting web resources, ensure that class resources are only
+        started once. (markt)
+      </fix>
+      <fix>
+        Improve the access checks for linked global resources to handle the case
+        where the current class loader is a child of the web application class
+        loader. (markt)
+      </fix>
+      <fix>
+        <bug>60196</bug>: Ensure that the <code>isMandatory</code> flag is
+        correctly set when using JASPIC authentication. (markt)
+      </fix>
+      <fix>
+        <bug>60199</bug>: Log a warning if deserialization issues prevent a
+        session attribute from being loaded. (markt)
+      </fix>
+      <fix>
+        <bug>60208</bug>: When using RFC6265 compliant cookies, the
+        <code>/</code> character should not be allowed in a cookie name since
+        the RFC6265 will drop such cookies as invalid. (markt)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="Coyote">
@@ -118,12 +201,18 @@
       </fix>
       <fix>
         <bug>60123</bug>: Avoid potential threading issues that could cause
-        excessively large vales to be returned for the processing time of
+        excessively large values to be returned for the processing time of
         a current request. (markt)
       </fix>
       <fix>
         <bug>60174</bug>: Log instances of <code>HeadersTooLargeException</code>
         during request processing. (markt)
+      </fix>
+      <fix>
+        <bug>60173</bug>: Allow up to 64kB HTTP/2 header table size limit. (remm)
+      </fix>
+      <fix>
+        Java 9 compatibility of direct ByteBuffer cleaner. (remm)
       </fix>
     </changelog>
   </subsection>
@@ -143,6 +232,15 @@
         configuration options with respect to the order in which resources are
         searched. (markt)
       </add>
+      <add>
+        Add an example of using the <code>classesToInitialize</code> attribute
+        of the <code>JreMemoryLeakPreventionListener</code> to the documentation
+        web application. Based on a patch by Cris Berneburg. (markt)
+      </add>
+      <fix>
+        <bug>60192</bug>: Correct a typo in the status output of the Manager
+        application. Patch provided by  Radhakrishna Pemmasani. (markt)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="jdbc-pool">
@@ -166,6 +264,21 @@
       <fix>
         Update the download location for Objenesis. (violetagg)
       </fix>
+      <fix>
+        <bug>60164</bug>: Replace <code>log4j-core*.jar</code> with
+        <code>log4j-web*.jar</code> since it is <code>log4j-web*.jar</code> that
+        contains the <code>ServletContainerInitializer</code>. (markt)
+      </fix>
+      <add>
+        Add documentation to the bin/catalina.bat script to remind users that
+        environment variables don't affect the configuration of Tomcat when
+        run as a Windows Service. Based upon a documentation patch by
+        James H.H. Lampert. (schultz)
+      </add>
+      <update>
+        Update the packaged version of the Tomcat Native Library to 1.2.10 to
+        pick up the latest Windows binaries built with OpenSSL 1.0.2j. (markt)
+      </update>
     </changelog>
   </subsection>
 </section>

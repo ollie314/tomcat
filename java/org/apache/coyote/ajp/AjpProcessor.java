@@ -43,6 +43,7 @@ import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.http.MimeHeaders;
 import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
+import org.apache.tomcat.util.net.ApplicationBufferHandler;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
@@ -1352,7 +1353,7 @@ public class AjpProcessor extends AbstractProcessor {
     protected class SocketInputBuffer implements InputBuffer {
 
         @Override
-        public int doRead(ByteChunk chunk) throws IOException {
+        public int doRead(ApplicationBufferHandler handler) throws IOException {
 
             if (endOfStream) {
                 return -1;
@@ -1363,9 +1364,9 @@ public class AjpProcessor extends AbstractProcessor {
                 }
             }
             ByteChunk bc = bodyBytes.getByteChunk();
-            chunk.setBytes(bc.getBuffer(), bc.getStart(), bc.getLength());
+            handler.setByteBuffer(ByteBuffer.wrap(bc.getBuffer(), bc.getStart(), bc.getLength()));
             empty = true;
-            return chunk.getLength();
+            return handler.getByteBuffer().remaining();
         }
     }
 

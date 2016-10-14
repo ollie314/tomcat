@@ -25,7 +25,6 @@ import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.http.MimeHeaders;
 import org.apache.tomcat.util.net.ApplicationBufferHandler;
@@ -283,12 +282,12 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
     // ---------------------------------------------------- InputBuffer Methods
 
     @Override
-    public int doRead(ByteChunk chunk) throws IOException {
+    public int doRead(ApplicationBufferHandler handler) throws IOException {
 
         if (lastActiveFilter == -1)
-            return inputStreamInputBuffer.doRead(chunk);
+            return inputStreamInputBuffer.doRead(handler);
         else
-            return activeFilters[lastActiveFilter].doRead(chunk);
+            return activeFilters[lastActiveFilter].doRead(handler);
 
     }
 
@@ -731,13 +730,13 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
             byteBuffer.limit(end).position(end);
         }
 
-        int oldPosition = byteBuffer.position();
+        byteBuffer.mark();
         if (byteBuffer.position() < byteBuffer.limit()) {
             byteBuffer.position(byteBuffer.limit());
         }
         byteBuffer.limit(byteBuffer.capacity());
         int nRead = wrapper.read(block, byteBuffer);
-        byteBuffer.limit(byteBuffer.position()).position(oldPosition);
+        byteBuffer.limit(byteBuffer.position()).reset();
         if (nRead > 0) {
             return true;
         } else if (nRead == -1) {
@@ -1058,7 +1057,7 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
     private class SocketInputBuffer implements InputBuffer {
 
         @Override
-        public int doRead(ByteChunk chunk) throws IOException {
+        public int doRead(ApplicationBufferHandler handler) throws IOException {
 
             if (byteBuffer.position() >= byteBuffer.limit()) {
                 // The application is reading the HTTP request body which is
@@ -1068,11 +1067,17 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
             }
 
             int length = byteBuffer.remaining();
-            chunk.setBytes(byteBuffer.array(), byteBuffer.position(), length);
+            handler.setByteBuffer(byteBuffer.duplicate());
             byteBuffer.position(byteBuffer.limit());
 
             return length;
         }
+    }
+
+
+    @Override
+    public void setByteBuffer(ByteBuffer buffer) {
+        byteBuffer = buffer;
     }
 
 
@@ -1090,6 +1095,7 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
         ByteBuffer temp = ByteBuffer.allocate(size);
         temp.put(byteBuffer);
         byteBuffer = temp;
+        byteBuffer.mark();
         temp = null;
     }
 }

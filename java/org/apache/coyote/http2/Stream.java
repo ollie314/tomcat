@@ -32,9 +32,10 @@ import org.apache.coyote.http2.HpackDecoder.HeaderEmitter;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.net.ApplicationBufferHandler;
 import org.apache.tomcat.util.res.StringManager;
 
-public class Stream extends AbstractStream implements HeaderEmitter {
+class Stream extends AbstractStream implements HeaderEmitter {
 
     private static final Log log = LogFactory.getLog(Stream.class);
     private static final StringManager sm = StringManager.getManager(Stream.class);
@@ -56,12 +57,12 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     private final StreamOutputBuffer outputBuffer = new StreamOutputBuffer();
 
 
-    public Stream(Integer identifier, Http2UpgradeHandler handler) {
+    Stream(Integer identifier, Http2UpgradeHandler handler) {
         this(identifier, handler, null);
     }
 
 
-    public Stream(Integer identifier, Http2UpgradeHandler handler, Request coyoteRequest) {
+    Stream(Integer identifier, Http2UpgradeHandler handler, Request coyoteRequest) {
         super(identifier);
         this.handler = handler;
         setParentStream(handler);
@@ -89,7 +90,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    void rePrioritise(AbstractStream parent, boolean exclusive, int weight) {
+    final void rePrioritise(AbstractStream parent, boolean exclusive, int weight) {
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("stream.reprioritisation.debug",
                     getConnectionId(), getIdentifier(), Boolean.toString(exclusive),
@@ -117,7 +118,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    void receiveReset(long errorCode) {
+    final void receiveReset(long errorCode) {
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("stream.reset.debug", getConnectionId(), getIdentifier(),
                     Long.toString(errorCode)));
@@ -135,13 +136,13 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    void checkState(FrameType frameType) throws Http2Exception {
+    final void checkState(FrameType frameType) throws Http2Exception {
         state.checkFrameType(frameType);
     }
 
 
     @Override
-    protected synchronized void incrementWindowSize(int windowSizeIncrement) throws Http2Exception {
+    final synchronized void incrementWindowSize(int windowSizeIncrement) throws Http2Exception {
         // If this is zero then any thread that has been trying to write for
         // this stream will be waiting. Notify that thread it can continue. Use
         // notify all even though only one thread is waiting to be on the safe
@@ -154,7 +155,8 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    private synchronized int reserveWindowSize(int reservation, boolean block) throws IOException {
+    private final synchronized int reserveWindowSize(int reservation, boolean block)
+            throws IOException {
         long windowSize = getWindowSize();
         while (windowSize < 1) {
             if (!canWrite()) {
@@ -187,21 +189,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
 
     @Override
-    protected synchronized void doNotifyAll() {
-        if (coyoteResponse.getWriteListener() == null) {
-            // Blocking IO so thread will be waiting. Release it.
-            // Use notifyAll() to be safe (should be unnecessary)
-            this.notifyAll();
-        } else {
-            if (outputBuffer.isRegisteredForWrite()) {
-                coyoteResponse.action(ActionCode.DISPATCH_WRITE, null);
-            }
-        }
-    }
-
-
-    @Override
-    public void emitHeader(String name, String value, boolean neverIndex) {
+    public final void emitHeader(String name, String value) {
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("stream.header.debug", getConnectionId(), getIdentifier(),
                     name, value));
@@ -251,19 +239,18 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    void writeHeaders() throws IOException {
+    final void writeHeaders() throws IOException {
         // TODO: Is 1k the optimal value?
         handler.writeHeaders(this, coyoteResponse, 1024);
     }
 
-    void writeAck() throws IOException {
+    final void writeAck() throws IOException {
         // TODO: Is 64 too big? Just the status header with compression
         handler.writeHeaders(this, ACK_RESPONSE, 64);
     }
 
 
-
-    void flushData() throws IOException {
+    final void flushData() throws IOException {
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("stream.write", getConnectionId(), getIdentifier()));
         }
@@ -272,104 +259,89 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
 
     @Override
-    protected final String getConnectionId() {
+    final String getConnectionId() {
         return getParentStream().getConnectionId();
     }
 
 
     @Override
-    protected int getWeight() {
+    final int getWeight() {
         return weight;
     }
 
 
-    Request getCoyoteRequest() {
+    final Request getCoyoteRequest() {
         return coyoteRequest;
     }
 
 
-    Response getCoyoteResponse() {
+    final Response getCoyoteResponse() {
         return coyoteResponse;
     }
 
 
-    ByteBuffer getInputByteBuffer() {
+    final ByteBuffer getInputByteBuffer() {
         return inputBuffer.getInBuffer();
     }
 
 
-    void receivedStartOfHeaders() {
+    final void receivedStartOfHeaders() {
         state.receivedStartOfHeaders();
     }
 
 
-    void receivedEndOfStream() {
+    final void receivedEndOfStream() {
         state.recievedEndOfStream();
     }
 
 
-    void sentEndOfStream() {
+    final void sentEndOfStream() {
         outputBuffer.endOfStreamSent = true;
         state.sentEndOfStream();
     }
 
 
-    StreamInputBuffer getInputBuffer() {
+    final StreamInputBuffer getInputBuffer() {
         return inputBuffer;
     }
 
 
-    StreamOutputBuffer getOutputBuffer() {
+    final StreamOutputBuffer getOutputBuffer() {
         return outputBuffer;
     }
 
 
-    /**
-     * Marks the stream as reset. This method will not change the stream state
-     * if:
-     * <ul>
-     * <li>The stream is already reset</li>
-     * <li>The stream is already closed</li>
-     *
-     * @throws IllegalStateException If the stream is in a state that does not
-     *         permit resets
-     */
-    void sendReset() {
-        state.sendReset();
-    }
-
-
-    void sentPushPromise() {
+    final void sentPushPromise() {
         state.sentPushPromise();
     }
 
 
-    boolean isActive() {
+    final boolean isActive() {
         return state.isActive();
     }
 
 
-    boolean canWrite() {
+    final boolean canWrite() {
         return state.canWrite();
     }
 
 
-    boolean isClosedFinal() {
+    final boolean isClosedFinal() {
         return state.isClosedFinal();
     }
 
 
-    void closeIfIdle() {
+    final void closeIfIdle() {
         state.closeIfIdle();
     }
 
 
-    boolean isInputFinished() {
+    private final boolean isInputFinished() {
         return !state.isFrameTypePermitted(FrameType.DATA);
     }
 
 
-    void close(Http2Exception http2Exception) {
+    final void close(Http2Exception http2Exception) {
         if (http2Exception instanceof StreamException) {
             try {
                 StreamException se = (StreamException) http2Exception;
@@ -387,12 +359,12 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    boolean isPushSupported() {
+    final boolean isPushSupported() {
         return handler.getRemoteSettings().getEnablePush();
     }
 
 
-    boolean push(Request request) throws IOException {
+    final boolean push(Request request) throws IOException {
         if (!isPushSupported()) {
             return false;
         }
@@ -422,8 +394,8 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    private static void push(final Http2UpgradeHandler handler, final Request request, final Stream stream)
-            throws IOException {
+    private static void push(final Http2UpgradeHandler handler, final Request request,
+            final Stream stream) throws IOException {
         if (org.apache.coyote.Constants.IS_SECURITY_ENABLED) {
             try {
                 AccessController.doPrivileged(
@@ -454,7 +426,6 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         private volatile long written = 0;
         private volatile boolean closed = false;
         private volatile boolean endOfStreamSent = false;
-        private volatile boolean writeInterest = false;
 
         /* The write methods are synchronized to ensure that only one thread at
          * a time is able to access the buffer. Without this protection, a
@@ -462,7 +433,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
          */
 
         @Override
-        public synchronized int doWrite(ByteBuffer chunk) throws IOException {
+        public final synchronized int doWrite(ByteBuffer chunk) throws IOException {
             if (closed) {
                 throw new IllegalStateException(
                         sm.getString("stream.closed", getConnectionId(), getIdentifier()));
@@ -490,11 +461,11 @@ public class Stream extends AbstractStream implements HeaderEmitter {
             return offset;
         }
 
-        public synchronized boolean flush(boolean block) throws IOException {
+        final synchronized boolean flush(boolean block) throws IOException {
             return flush(false, block);
         }
 
-        private synchronized boolean flush(boolean writeInProgress, boolean block)
+        private final synchronized boolean flush(boolean writeInProgress, boolean block)
                 throws IOException {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("stream.outputBuffer.flush.debug", getConnectionId(),
@@ -533,18 +504,8 @@ public class Stream extends AbstractStream implements HeaderEmitter {
             return false;
         }
 
-        synchronized boolean isReady() {
+        final synchronized boolean isReady() {
             if (getWindowSize() > 0 && handler.getWindowSize() > 0) {
-                return true;
-            } else {
-                writeInterest = true;
-                return false;
-            }
-        }
-
-        synchronized boolean isRegisteredForWrite() {
-            if (writeInterest) {
-                writeInterest = false;
                 return true;
             } else {
                 return false;
@@ -552,24 +513,20 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         }
 
         @Override
-        public long getBytesWritten() {
+        public final long getBytesWritten() {
             return written;
         }
 
-        public void close() throws IOException {
+        final void close() throws IOException {
             closed = true;
             flushData();
-        }
-
-        public boolean isClosed() {
-            return closed;
         }
 
         /**
          * @return <code>true</code> if it is certain that the associated
          *         response has no body.
          */
-        public boolean hasNoBody() {
+        final boolean hasNoBody() {
             return ((written == 0) && closed);
         }
     }
@@ -605,7 +562,8 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         private boolean reset = false;
 
         @Override
-        public int doRead(ByteChunk chunk) throws IOException {
+        public final int doRead(ApplicationBufferHandler applicationBufferHandler)
+                throws IOException {
 
             ensureBuffersExist();
 
@@ -651,7 +609,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
                 }
             }
 
-            chunk.setBytes(outBuffer, 0,  written);
+            applicationBufferHandler.setByteBuffer(ByteBuffer.wrap(outBuffer, 0,  written));
 
             // Increment client-side flow control windows by the number of bytes
             // read
@@ -661,19 +619,19 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         }
 
 
-        void registerReadInterest() {
+        final void registerReadInterest() {
             synchronized (inBuffer) {
                 readInterest = true;
             }
         }
 
 
-        synchronized boolean isRequestBodyFullyRead() {
+        final synchronized boolean isRequestBodyFullyRead() {
             return (inBuffer == null || inBuffer.position() == 0) && isInputFinished();
         }
 
 
-        synchronized int available() {
+        final synchronized int available() {
             if (inBuffer == null) {
                 return 0;
             }
@@ -684,7 +642,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         /*
          * Called after placing some data in the inBuffer.
          */
-        synchronized boolean onDataAvailable() {
+        final synchronized boolean onDataAvailable() {
             if (readInterest) {
                 if (log.isDebugEnabled()) {
                     log.debug(sm.getString("stream.inputBuffer.dispatch"));
@@ -708,18 +666,18 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         }
 
 
-        public ByteBuffer getInBuffer() {
+        private final ByteBuffer getInBuffer() {
             ensureBuffersExist();
             return inBuffer;
         }
 
 
-        protected synchronized void insertReplayedBody(ByteChunk body) {
+        final synchronized void insertReplayedBody(ByteChunk body) {
             inBuffer = ByteBuffer.wrap(body.getBytes(),  body.getOffset(),  body.getLength());
         }
 
 
-        private void ensureBuffersExist() {
+        private final void ensureBuffersExist() {
             if (inBuffer == null) {
                 // The client must obey Tomcat's window size when sending so
                 // this is the initial window size set by Tomcat that the client
@@ -735,7 +693,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         }
 
 
-        protected void receiveReset() {
+        private final void receiveReset() {
             if (inBuffer != null) {
                 synchronized (inBuffer) {
                     reset = true;

@@ -63,12 +63,12 @@ public class HpackDecoder {
 
     private final StringBuilder stringBuilder = new StringBuilder();
 
-    public HpackDecoder(int maxMemorySize) {
+    HpackDecoder(int maxMemorySize) {
         this.maxMemorySize = maxMemorySize;
         headerTable = new Hpack.HeaderField[DEFAULT_RING_BUFFER_SIZE];
     }
 
-    public HpackDecoder() {
+    HpackDecoder() {
         this(Hpack.DEFAULT_TABLE_SIZE);
     }
 
@@ -81,7 +81,7 @@ public class HpackDecoder {
      *
      * @throws HpackException If the packed data is not valid
      */
-    public void decode(ByteBuffer buffer) throws HpackException {
+    void decode(ByteBuffer buffer) throws HpackException {
         while (buffer.hasRemaining()) {
             int originalPos = buffer.position();
             byte b = buffer.get();
@@ -109,7 +109,7 @@ public class HpackDecoder {
                     buffer.position(originalPos);
                     return;
                 }
-                headerEmitter.emitHeader(headerName, headerValue, false);
+                headerEmitter.emitHeader(headerName, headerValue);
                 addEntryToHeaderTable(new Hpack.HeaderField(headerName, headerValue));
             } else if ((b & 0b11110000) == 0) {
                 //Literal Header Field without Indexing
@@ -123,7 +123,7 @@ public class HpackDecoder {
                     buffer.position(originalPos);
                     return;
                 }
-                headerEmitter.emitHeader(headerName, headerValue, false);
+                headerEmitter.emitHeader(headerName, headerValue);
             } else if ((b & 0b11110000) == 0b00010000) {
                 //Literal Header Field never indexed
                 String headerName = readHeaderName(buffer, 4);
@@ -136,7 +136,7 @@ public class HpackDecoder {
                     buffer.position(originalPos);
                     return;
                 }
-                headerEmitter.emitHeader(headerName, headerValue, true);
+                headerEmitter.emitHeader(headerName, headerValue);
             } else if ((b & 0b11100000) == 0b00100000) {
                 //context update max table size change
                 if (!handleMaxMemorySizeChange(buffer, originalPos)) {
@@ -246,7 +246,7 @@ public class HpackDecoder {
         } else {
             int adjustedIndex = getRealIndex(index - Hpack.STATIC_TABLE_LENGTH);
             Hpack.HeaderField headerField = headerTable[adjustedIndex];
-            headerEmitter.emitHeader(headerField.name, headerField.value, false);
+            headerEmitter.emitHeader(headerField.name, headerField.value);
         }
     }
 
@@ -273,7 +273,7 @@ public class HpackDecoder {
         if (entry.value == null) {
             throw new HpackException();
         }
-        headerEmitter.emitHeader(entry.name, entry.value, false);
+        headerEmitter.emitHeader(entry.name, entry.value);
     }
 
     private void addEntryToHeaderTable(Hpack.HeaderField entry) {
@@ -326,16 +326,16 @@ public class HpackDecoder {
     /**
      * Interface that can be used to immediately validate headers (ex: uppercase detection).
      */
-    public interface HeaderEmitter {
-        void emitHeader(String name, String value, boolean neverIndex);
+    interface HeaderEmitter {
+        void emitHeader(String name, String value);
     }
 
 
-    public HeaderEmitter getHeaderEmitter() {
+    HeaderEmitter getHeaderEmitter() {
         return headerEmitter;
     }
 
-    public void setHeaderEmitter(HeaderEmitter headerEmitter) {
+    void setHeaderEmitter(HeaderEmitter headerEmitter) {
         this.headerEmitter = headerEmitter;
     }
 

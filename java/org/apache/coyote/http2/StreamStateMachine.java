@@ -71,7 +71,7 @@ class StreamStateMachine {
     }
 
 
-    final synchronized void receiveReset() {
+    final synchronized void receivedReset() {
         stateChange(state, State.CLOSED_RST_RX);
     }
 
@@ -111,11 +111,6 @@ class StreamStateMachine {
 
     final synchronized boolean isActive() {
         return state.isActive();
-    }
-
-
-    final synchronized boolean canRead() {
-        return state.canRead();
     }
 
 
@@ -189,10 +184,6 @@ class StreamStateMachine {
 
         public boolean isActive() {
             return canWrite || canRead;
-        }
-
-        public boolean canRead() {
-            return canRead;
         }
 
         public boolean canWrite() {

@@ -378,7 +378,6 @@
   <patternset id="files.tomcat-util-scan">
     <include name="org/apache/tomcat/util/descriptor/**" />
     <include name="org/apache/tomcat/util/digester/**" />
-    <include name="org/apache/tomcat/util/file/**" />
     <include name="org/apache/tomcat/util/scan/**" />
   </patternset>
 
@@ -721,7 +720,7 @@
       filesId="files.websocket-api"
       manifest="${tomcat.manifests}/websocket-api.jar.manifest" />
 
-    <!-- JASPIC 1.1 Implementation JAR File -->
+    <!-- JASPIC 1.1 API JAR File -->
     <jarIt jarfile="${jaspic-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.jaspic-api"
@@ -2460,7 +2459,7 @@ skip.installer property in build.properties" />
       filesDir="java"
       filesId="files.tomcat-websocket" />
 
-    <!-- JASPIC 1.1 Implementation JAR File -->
+    <!-- JASPIC 1.1 API JAR File -->
     <jarIt jarfile="${jaspic-api-src.jar}"
       filesDir="java"
       filesId="files.jaspic-api"

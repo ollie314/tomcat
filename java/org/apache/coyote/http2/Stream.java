@@ -40,6 +40,11 @@ class Stream extends AbstractStream implements HeaderEmitter {
     private static final Log log = LogFactory.getLog(Stream.class);
     private static final StringManager sm = StringManager.getManager(Stream.class);
 
+    private static final int HEADER_STATE_START = 0;
+    private static final int HEADER_STATE_PSEUDO = 1;
+    private static final int HEADER_STATE_REGULAR = 2;
+    private static final int HEADER_STATE_TRAILER = 3;
+
     private static final Response ACK_RESPONSE = new Response();
 
     static {
@@ -50,8 +55,12 @@ class Stream extends AbstractStream implements HeaderEmitter {
 
     private final Http2UpgradeHandler handler;
     private final StreamStateMachine state;
+    // State machine would be too much overhead
+    private int headerState = HEADER_STATE_START;
+    private String headerStateErrorMsg = null;
     // TODO: null these when finished to reduce memory used by closed stream
     private final Request coyoteRequest;
+    private StringBuilder cookieHeader = null;
     private final Response coyoteResponse = new Response();
     private final StreamInputBuffer inputBuffer;
     private final StreamOutputBuffer outputBuffer = new StreamOutputBuffer();
@@ -124,7 +133,7 @@ class Stream extends AbstractStream implements HeaderEmitter {
                     Long.toString(errorCode)));
         }
         // Set the new state first since read and write both check this
-        state.receiveReset();
+        state.receivedReset();
         // Reads wait internally so need to call a method to break the wait()
         if (inputBuffer != null) {
             inputBuffer.receiveReset();
@@ -195,6 +204,25 @@ class Stream extends AbstractStream implements HeaderEmitter {
                     name, value));
         }
 
+        if (headerStateErrorMsg != null) {
+            // Don't bother processing the header since the stream is going to
+            // be reset anyway
+            return;
+        }
+
+        boolean pseudoHeader = name.charAt(0) == ':';
+
+        if (pseudoHeader && headerState != HEADER_STATE_PSEUDO) {
+            headerStateErrorMsg = sm.getString("stream.header.unexpectedPseudoHeader",
+                    getConnectionId(), getIdentifier(), name);
+            // No need for further processing. The stream will be reset.
+            return;
+        }
+
+        if (headerState == HEADER_STATE_PSEUDO && !pseudoHeader) {
+            headerState = HEADER_STATE_REGULAR;
+        }
+
         switch(name) {
         case ":method": {
             coyoteRequest.method().setString(value);
@@ -228,14 +256,54 @@ class Stream extends AbstractStream implements HeaderEmitter {
             }
             break;
         }
+        case "cookie": {
+            // Cookie headers need to be concatenated into a single header
+            // See RFC 7540 8.1.2.5
+            if (cookieHeader == null) {
+                cookieHeader = new StringBuilder();
+            } else {
+                cookieHeader.append("; ");
+            }
+            cookieHeader.append(value);
+            break;
+        }
         default: {
+            if (headerState == HEADER_STATE_TRAILER && !handler.isTrailerHeaderAllowed(name)) {
+                break;
+            }
             if ("expect".equals(name) && "100-continue".equals(value)) {
                 coyoteRequest.setExpectation(true);
+            }
+            if (pseudoHeader) {
+                headerStateErrorMsg = sm.getString("stream.header.unknownPseudoHeader",
+                        getConnectionId(), getIdentifier(), name);
             }
             // Assume other HTTP header
             coyoteRequest.getMimeHeaders().addValue(name).setString(value);
         }
         }
+    }
+
+
+    @Override
+    public void validateHeaders() throws StreamException {
+        if (headerStateErrorMsg == null) {
+            return;
+        }
+
+        throw new StreamException(headerStateErrorMsg, Http2Error.PROTOCOL_ERROR,
+                getIdentifier().intValue());
+    }
+
+
+    final boolean receivedEndOfHeaders() {
+        // Cookie headers need to be concatenated into a single header
+        // See RFC 7540 8.1.2.5
+        // Can only do this once the headers are fully received
+        if (cookieHeader != null) {
+            coyoteRequest.getMimeHeaders().addValue("cookie").setString(cookieHeader.toString());
+        }
+        return headerState == HEADER_STATE_REGULAR || headerState == HEADER_STATE_PSEUDO;
     }
 
 
@@ -286,11 +354,21 @@ class Stream extends AbstractStream implements HeaderEmitter {
 
 
     final void receivedStartOfHeaders() {
+        if (headerState == HEADER_STATE_START) {
+            headerState = HEADER_STATE_PSEUDO;
+        } else if (headerState == HEADER_STATE_PSEUDO || headerState == HEADER_STATE_REGULAR) {
+            headerState = HEADER_STATE_TRAILER;
+        }
+        // Parser will catch attempt to send a headers frame after the stream
+        // has closed.
         state.receivedStartOfHeaders();
     }
 
 
     final void receivedEndOfStream() {
+        synchronized (inputBuffer) {
+            inputBuffer.notifyAll();
+        }
         state.recievedEndOfStream();
     }
 

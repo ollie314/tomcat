@@ -14,13 +14,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.apache.coyote.http2;
+package org.apache.tomcat.util.http.parser;
 
-public class Constants {
+import org.junit.Assert;
+import org.junit.Test;
 
-    // Prioritisation
-    public static final int DEFAULT_WEIGHT = 16;
+public class TestHttpParser {
 
-    // Parsing
-    static final int DEFAULT_HEADER_READ_BUFFER_SIZE = 1024;
+    @Test
+    public void testTokenDel() {
+        Assert.assertFalse("DEL is not a token", HttpParser.isToken(127));
+    }
 }

@@ -97,8 +97,6 @@ class Stream extends AbstractStream implements HeaderEmitter {
         this.coyoteResponse.setOutputBuffer(outputBuffer);
         this.coyoteRequest.setResponse(coyoteResponse);
         this.coyoteRequest.protocol().setString("HTTP/2.0");
-        // Configure HTTP/2 limits
-        this.coyoteRequest.getCookies().setLimit(handler.getMaxCookieCount());
     }
 
 
@@ -132,7 +130,7 @@ class Stream extends AbstractStream implements HeaderEmitter {
 
     final void receiveReset(long errorCode) {
         if (log.isDebugEnabled()) {
-            log.debug(sm.getString("stream.reset.debug", getConnectionId(), getIdentifier(),
+            log.debug(sm.getString("stream.reset.receive", getConnectionId(), getIdentifier(),
                     Long.toString(errorCode)));
         }
         // Set the new state first since read and write both check this
@@ -436,7 +434,11 @@ class Stream extends AbstractStream implements HeaderEmitter {
         if (http2Exception instanceof StreamException) {
             try {
                 StreamException se = (StreamException) http2Exception;
-                receiveReset(se.getError().getCode());
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("stream.reset.send", getConnectionId(), getIdentifier(),
+                            Long.toString(se.getError().getCode())));
+                }
+                state.sendReset();
                 handler.sendStreamReset(se);
             } catch (IOException ioe) {
                 ConnectionException ce = new ConnectionException(

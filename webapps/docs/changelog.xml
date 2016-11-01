@@ -83,6 +83,15 @@
       <fix>
         <bug>60297</bug>: Simplify connector creation in embedded mode. (remm)
       </fix>
+      <fix>
+        Refactor creation of containers in embedded mode for more consistency
+        and flexibility. (remm)
+      </fix>
+      <add>
+        Log a warning if running on Java 9 with the ThreadLocal memory leak
+        detection enabled (the default) but without the command line option it
+        now requires. (markt)
+      </add>
     </changelog>
   </subsection>
   <subsection name="Coyote">
@@ -132,6 +141,10 @@
         trailer headers allowed and the maximum number of cookies allowed.
         (markt)
       </add>
+      <fix>
+        Correctly differentiate between sending and receiving a reset frame when
+        tracking the state of an HTTP/2 stream. (markt)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="Jasper">
@@ -158,6 +171,10 @@
         Remove classes from tomcat-util-scan.jar that are duplicates of those in
         tomcat-util.jar. (markt)
       </fix>
+      <add>
+        Update the NSIS Installer used to build the Windows installer to version
+        3.0. (markt)
+      </add>
     </changelog>
   </subsection>
 </section>
@@ -247,6 +264,12 @@
         <code>/</code> character should not be allowed in a cookie name since
         the RFC6265 will drop such cookies as invalid. (markt)
       </fix>
+      <add>
+        Introduce new methods <code>read(ByteBuffer)</code>/
+        <code>write(ByteBuffer)</code> in
+        <code>o.a.catalina.connector.CoyoteInputStream</code>/
+        <code>o.a.catalina.connector.CoyoteOutputStream</code>. (violetagg)
+      </add>
     </changelog>
   </subsection>
   <subsection name="Coyote">

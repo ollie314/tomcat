@@ -105,7 +105,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
     public AbstractProtocol(AbstractEndpoint<S> endpoint) {
         this.endpoint = endpoint;
-        setSoLinger(Constants.DEFAULT_CONNECTION_LINGER);
+        setConnectionLinger(Constants.DEFAULT_CONNECTION_LINGER);
         setTcpNoDelay(Constants.DEFAULT_TCP_NO_DELAY);
     }
 
@@ -233,8 +233,8 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
     }
 
 
-    public int getBacklog() { return endpoint.getBacklog(); }
-    public void setBacklog(int backlog) { endpoint.setBacklog(backlog); }
+    public int getAcceptCount() { return endpoint.getAcceptCount(); }
+    public void setAcceptCount(int acceptCount) { endpoint.setAcceptCount(acceptCount); }
 
 
     public boolean getTcpNoDelay() { return endpoint.getTcpNoDelay(); }
@@ -243,8 +243,10 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
     }
 
 
-    public int getSoLinger() { return endpoint.getSoLinger(); }
-    public void setSoLinger(int soLinger) { endpoint.setSoLinger(soLinger); }
+    public int getConnectionLinger() { return endpoint.getConnectionLinger(); }
+    public void setConnectionLinger(int connectionLinger) {
+        endpoint.setConnectionLinger(connectionLinger);
+    }
 
 
     public int getKeepAliveTimeout() { return endpoint.getKeepAliveTimeout(); }
@@ -271,22 +273,10 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
      * wait for that data to arrive before closing the connection.
      */
     public int getConnectionTimeout() {
-        // Note that the endpoint uses the alternative name
-        return endpoint.getSoTimeout();
+        return endpoint.getConnectionTimeout();
     }
     public void setConnectionTimeout(int timeout) {
-        // Note that the endpoint uses the alternative name
-        endpoint.setSoTimeout(timeout);
-    }
-
-    /*
-     * Alternative name for connectionTimeout property
-     */
-    public int getSoTimeout() {
-        return getConnectionTimeout();
-    }
-    public void setSoTimeout(int timeout) {
-        setConnectionTimeout(timeout);
+        endpoint.setConnectionTimeout(timeout);
     }
 
     public int getMaxHeaderCount() {
@@ -564,7 +554,11 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
         // Start async timeout thread
         asyncTimeout = new AsyncTimeout();
         Thread timeoutThread = new Thread(asyncTimeout, getNameInternal() + "-AsyncTimeout");
-        timeoutThread.setPriority(endpoint.getThreadPriority());
+        int priority = endpoint.getThreadPriority();
+        if (priority < Thread.MIN_PRIORITY || priority > Thread.MAX_PRIORITY) {
+            priority = Thread.NORM_PRIORITY;
+        }
+        timeoutThread.setPriority(priority);
         timeoutThread.setDaemon(true);
         timeoutThread.start();
     }

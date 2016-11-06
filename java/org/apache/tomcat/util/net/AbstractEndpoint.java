@@ -160,7 +160,7 @@ public abstract class AbstractEndpoint<S> {
     /**
      * Are we using an internal executor
      */
-    protected volatile boolean internalExecutor = false;
+    protected volatile boolean internalExecutor = true;
 
 
     /**
@@ -386,13 +386,13 @@ public abstract class AbstractEndpoint<S> {
     public void setAddress(InetAddress address) { this.address = address; }
 
     /**
-     * Allows the server developer to specify the backlog that
+     * Allows the server developer to specify the acceptCount (backlog) that
      * should be used for server sockets. By default, this value
      * is 100.
      */
-    private int backlog = 100;
-    public void setBacklog(int backlog) { if (backlog > 0) this.backlog = backlog; }
-    public int getBacklog() { return backlog; }
+    private int acceptCount = 100;
+    public void setAcceptCount(int acceptCount) { if (acceptCount > 0) this.acceptCount = acceptCount; }
+    public int getAcceptCount() { return acceptCount; }
 
     /**
      * Controls when the Endpoint binds the port. <code>true</code>, the default
@@ -411,7 +411,7 @@ public abstract class AbstractEndpoint<S> {
     private Integer keepAliveTimeout = null;
     public int getKeepAliveTimeout() {
         if (keepAliveTimeout == null) {
-            return getSoTimeout();
+            return getConnectionTimeout();
         } else {
             return keepAliveTimeout.intValue();
         }
@@ -437,10 +437,10 @@ public abstract class AbstractEndpoint<S> {
      * @return The current socket linger time for sockets created by this
      *         endpoint
      */
-    public int getSoLinger() { return socketProperties.getSoLingerTime(); }
-    public void setSoLinger(int soLinger) {
-        socketProperties.setSoLingerTime(soLinger);
-        socketProperties.setSoLingerOn(soLinger>=0);
+    public int getConnectionLinger() { return socketProperties.getSoLingerTime(); }
+    public void setConnectionLinger(int connectionLinger) {
+        socketProperties.setSoLingerTime(connectionLinger);
+        socketProperties.setSoLingerOn(connectionLinger>=0);
     }
 
 
@@ -449,8 +449,8 @@ public abstract class AbstractEndpoint<S> {
      *
      * @return The current socket timeout for sockets created by this endpoint
      */
-    public int getSoTimeout() { return socketProperties.getSoTimeout(); }
-    public void setSoTimeout(int soTimeout) { socketProperties.setSoTimeout(soTimeout); }
+    public int getConnectionTimeout() { return socketProperties.getSoTimeout(); }
+    public void setConnectionTimeout(int soTimeout) { socketProperties.setSoTimeout(soTimeout); }
 
     /**
      * SSL engine.
@@ -461,20 +461,28 @@ public abstract class AbstractEndpoint<S> {
 
 
     private int minSpareThreads = 10;
-    public int getMinSpareThreads() {
-        return Math.min(minSpareThreads,getMaxThreads());
-    }
     public void setMinSpareThreads(int minSpareThreads) {
         this.minSpareThreads = minSpareThreads;
         Executor executor = this.executor;
-        if (running && executor != null) {
-            if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
-                ((java.util.concurrent.ThreadPoolExecutor) executor).setCorePoolSize(minSpareThreads);
-            } else if (executor instanceof ResizableExecutor) {
-                ((ResizableExecutor) executor).resizePool(minSpareThreads, maxThreads);
-            }
+        if (internalExecutor && executor instanceof java.util.concurrent.ThreadPoolExecutor) {
+            // The internal executor should always be an instance of
+            // j.u.c.ThreadPoolExecutor but it may be null if the endpoint is
+            // not running.
+            // This check also avoids various threading issues.
+            ((java.util.concurrent.ThreadPoolExecutor) executor).setCorePoolSize(minSpareThreads);
         }
     }
+    public int getMinSpareThreads() {
+        return Math.min(getMinSpareThreadsInternal(), getMaxThreads());
+    }
+    private int getMinSpareThreadsInternal() {
+        if (internalExecutor) {
+            return minSpareThreads;
+        } else {
+            return -1;
+        }
+    }
+
 
     /**
      * Maximum amount of worker threads.
@@ -483,31 +491,39 @@ public abstract class AbstractEndpoint<S> {
     public void setMaxThreads(int maxThreads) {
         this.maxThreads = maxThreads;
         Executor executor = this.executor;
-        if (running && executor != null) {
-            if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
-                ((java.util.concurrent.ThreadPoolExecutor) executor).setMaximumPoolSize(maxThreads);
-            } else if (executor instanceof ResizableExecutor) {
-                ((ResizableExecutor) executor).resizePool(minSpareThreads, maxThreads);
-            }
+        if (internalExecutor && executor instanceof java.util.concurrent.ThreadPoolExecutor) {
+            // The internal executor should always be an instance of
+            // j.u.c.ThreadPoolExecutor but it may be null if the endpoint is
+            // not running.
+            // This check also avoids various threading issues.
+            ((java.util.concurrent.ThreadPoolExecutor) executor).setMaximumPoolSize(maxThreads);
         }
     }
     public int getMaxThreads() {
-        return getMaxThreadsExecutor(running);
-    }
-    protected int getMaxThreadsExecutor(boolean useExecutor) {
-        Executor executor = this.executor;
-        if (useExecutor && executor != null) {
-            if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
-                return ((java.util.concurrent.ThreadPoolExecutor)executor).getMaximumPoolSize();
-            } else if (executor instanceof ResizableExecutor) {
-                return ((ResizableExecutor)executor).getMaxThreads();
-            } else {
-                return -1;
-            }
-        } else {
+        if (internalExecutor) {
             return maxThreads;
+        } else {
+            return -1;
         }
     }
+
+
+    /**
+     * Priority of the worker threads.
+     */
+    protected int threadPriority = Thread.NORM_PRIORITY;
+    public void setThreadPriority(int threadPriority) {
+        // Can't change this once the executor has started
+        this.threadPriority = threadPriority;
+    }
+    public int getThreadPriority() {
+        if (internalExecutor) {
+            return threadPriority;
+        } else {
+            return -1;
+        }
+    }
+
 
     /**
      * Max keep alive requests
@@ -548,13 +564,6 @@ public abstract class AbstractEndpoint<S> {
     public void setDaemon(boolean b) { daemon = b; }
     public boolean getDaemon() { return daemon; }
 
-
-    /**
-     * Priority of the worker threads.
-     */
-    protected int threadPriority = Thread.NORM_PRIORITY;
-    public void setThreadPriority(int threadPriority) { this.threadPriority = threadPriority; }
-    public int getThreadPriority() { return threadPriority; }
 
     protected abstract boolean getDeferAccept();
 

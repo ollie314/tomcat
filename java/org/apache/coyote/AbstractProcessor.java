@@ -103,6 +103,9 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
                 response.setStatus(500);
             }
             getLog().info(sm.getString("abstractProcessor.nonContainerThreadError"), t);
+            // Set the request attribute so that the async onError() event is
+            // fired when the error event is processed
+            request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, t);
             socketWrapper.processSocket(SocketEvent.ERROR, true);
         }
     }
@@ -307,7 +310,11 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
         case CLOSE_NOW: {
             // Prevent further writes to the response
             setSwallowResponse();
-            setErrorState(ErrorState.CLOSE_NOW, null);
+            if (param instanceof Throwable) {
+                setErrorState(ErrorState.CLOSE_NOW, (Throwable) param);
+            } else {
+                setErrorState(ErrorState.CLOSE_NOW, null);
+            }
             break;
         }
         case DISABLE_SWALLOW_INPUT: {

@@ -44,7 +44,7 @@
   They eventually become mixed with the numbered issues. (I.e., numbered
   issues do not "pop up" wrt. others).
 -->
-<section name="Tomcat 9.0.0.M14" rtext="in development">
+<section name="Tomcat 9.0.0.M14 (markt)" rtext="in development">
   <subsection name="Catalina">
     <changelog>
       <update>
@@ -52,6 +52,139 @@
         state, or the realm backend. Update lockout realm to only register
         auth failures if the realm is available. (remm)
       </update>
+      <fix>
+        <bug>60340</bug>: Readability improvements for CSS used in
+        DefaultServlet and ErrorReportValve. Patch provided by Michael
+        Osipov. (violetagg)
+      </fix>
+      <fix>
+        <bug>60351</bug>: Delay creating <code>META-INF/war-tracker</code> file
+        until after the WAR has been expanded to address the case where the
+        Tomcat process terminates during the expansion. (markt)
+      </fix>
+      <fix>
+        Correctly generate URLs for resources located inside JARs that are
+        themselves located inside a packed WAR file. (markt)
+      </fix>
+      <fix>
+        Correctly handle the <code>configClass</code> attribute of a Host when
+        embedding Tomcat. (markt)
+      </fix>
+      <update>
+        <bug>60368</bug>: Stop creating a default connector on start in
+        embedded mode. (remm)
+      </update>
+      <fix>
+        <bug>60379</bug>: Dispose of the GSS credential once it is no longer
+        required. Patch provided by Michael Osipov. (markt)
+      </fix>
+      <fix>
+        <bug>60380</bug>: Ensure that a call to
+        <code>HttpServletRequest#logout()</code> triggers a call to
+        <code>TomcatPrincipal#logout()</code>. Based on a patch by Michael
+        Osipov. (markt)
+      </fix>
+      <fix>
+        <bug>60381</bug>: Provide a standard <code>toString()</code>
+        implementation for components that implement <code>Contained</code>.
+        (markt)
+      </fix>
+      <fix>
+        <bug>60387</bug>: Correct the javadoc for
+        <code>o.a.catalina.AccessLog.setRequestAttributesEnabled</code>.
+        The default value is different for the different implementations.
+        (violetagg)
+      </fix>
+      <scode>
+        <bug>60393</bug>: Use consistent parameter naming in implementations of
+        <code>Realm#authenticate(GSSContext, boolean)</code>. (markt)
+      </scode>
+      <scode>
+        Refactor the <code>org.apache.naming</code> package to reduce duplicate
+        code. Duplicate code identified by the Simian tool. (markt)
+      </scode>
+      <scode>
+        Refactor the implementations of
+        <code>HttpServletRequest#getRequestURL()</code> to reduce duplicate
+        code. Duplicate code identified by the Simian tool. (markt)
+      </scode>
+      <scode>
+        Refactor Catalina interfaces to make wider use of the
+        <code>Contained</code> interface and reduce duplication. (markt)
+      </scode>
+      <scode>
+        Remove the <code>getName()</code> method from <code>RealmBase</code>
+        along with the various constants used by the sub-classes to store the
+        return value. (markt)
+      </scode>
+      <fix>
+        <bug>60395</bug>: Log when an <code>Authenticator</code> passes an
+        incomplete <code>GSSContext</code> to a Realm since it indicates a bug
+        in the <code>Authenticator</code>. Patch provided by Michael Osipov.
+        (markt)
+      </fix>
+      <fix>
+        <bug>60400</bug>: When expanding the buffer used for reading the
+        request body, ensure the read position will be restored to the
+        original one. (violetagg)
+      </fix>
+      <scode>
+        Refactor the MBean implementations for the internal Tomcat components
+        to reduce code duplication. (markt)
+      </scode>
+    </changelog>
+  </subsection>
+  <subsection name="Coyote">
+    <changelog>
+      <fix>
+        <bug>60372</bug>: Ensure the response headers' buffer limit is reset to
+        the capacity of this buffer when IOException occurs while writing the
+        headers to the socket. (violetagg)
+      </fix>
+      <fix>
+        Ensure that the availability of configured upgrade protocols that
+        require ALPN is correctly reported during Tomcat start. (markt)
+      </fix>
+      <fix>
+        <bug>60386</bug>: Implement a more sophisticated pruning algorithm for
+        removing closed streams from the priority tree to ensure that the tree
+        does not grow too large. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Web applications">
+    <changelog>
+      <fix>
+        Correct a typo in Host Configuration Reference.
+        Issue reported via comments.apache.org. (violetagg)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Tribes">
+    <changelog>
+      <fix>
+        Reduce the warning logs for a message received from a different domain
+        in order to avoid excessive log outputs. (kfujino)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="jdbc-pool">
+    <changelog>
+      <add>
+        <bug>58816</bug>: Implement the statistics of jdbc-pool. The stats infos
+        are <code>borrowedCount</code>, <code>returnedCount</code>,
+        <code>createdCount</code>, <code>releasedCount</code> and
+        <code>reconnectedCount</code>. (kfujino)
+      </add>
+      <fix>
+        <bug>60194</bug>: If <code>validationQuery</code> is not specified,
+        connection validation is done by calling the <code>isValid()</code>
+        method. (kfujino)
+      </fix>
+      <fix>
+        <bug>60398</bug>: Fix testcase of <code>TestSlowQueryReport</code>.
+        (kfujino)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="Other">
@@ -61,10 +194,35 @@
         startup mode and JVM args. Patch provided by isapir via Github.
         (violetagg)
       </fix>
+      <fix>
+        <bug>60366</bug>: Change <code>catalina.bat</code> to use directly
+        <code>LOGGING_MANAGER</code> and <code>LOGGING_CONFIG</code> variables
+        in order to configure logging, instead of modifying
+        <code>JAVA_OPTS</code>. Patch provided by Petter Isberg. (violetagg)
+      </fix>
+      <fix>
+        <bug>60383</bug>: JASPIC API is added as a dependency to the
+        <code>org.apache.tomcat:tomcat-catalina</code> maven artifact.
+        (violetagg)
+      </fix>
+      <fix>
+        Update the comments associated with the TLS Connector examples in
+        <code>server.xml</code>. (markt)
+      </fix>
+      <add>
+        New property is added <code>test.verbose</code> in order to control
+        whether the output of the tests is displayed on the console or not.
+        Patch provided by Emmanuel Bourg. (violetagg)
+      </add>
+      <scode>
+        <code>TestOpenSSLCipherConfigurationParser.testSpecification</code>
+        - if there are test failures, provide more detailed information. Patch
+        provided by Emmanuel Bourg. (violetagg)
+      </scode>
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M13" rtext="release in progress">
+<section name="Tomcat 9.0.0.M13 (markt)" rtext="2016-11-08">
   <subsection name="Coyote">
     <changelog>
       <fix>
@@ -74,7 +232,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M12" rtext="not released">
+<section name="Tomcat 9.0.0.M12 (markt)" rtext="not released">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -262,7 +420,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M11" rtext="2016-10-10">
+<section name="Tomcat 9.0.0.M11 (markt)" rtext="2016-10-10">
   <subsection name="Catalina">
     <changelog>
       <add>
@@ -455,7 +613,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M10" rtext="2016-09-05">
+<section name="Tomcat 9.0.0.M10 (markt)" rtext="2016-09-05">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -801,7 +959,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M9" rtext="2016-07-12">
+<section name="Tomcat 9.0.0.M9 (markt)" rtext="2016-07-12">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -986,7 +1144,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M8" rtext="2016-06-13">
+<section name="Tomcat 9.0.0.M8 (markt)" rtext="2016-06-13">
   <subsection name="Coyote">
     <changelog>
       <fix>
@@ -995,7 +1153,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M7" rtext="not released">
+<section name="Tomcat 9.0.0.M7 (markt)" rtext="not released">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -1156,7 +1314,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M6" rtext="2016-05-16">
+<section name="Tomcat 9.0.0.M6 (markt)" rtext="2016-05-16">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -1166,7 +1324,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M5" rtext="not released">
+<section name="Tomcat 9.0.0.M5 (markt)" rtext="not released">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -1557,7 +1715,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M4" rtext="2016-03-16">
+<section name="Tomcat 9.0.0.M4 (markt)" rtext="2016-03-16">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -1836,7 +1994,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M3" rtext="2016-02-05">
+<section name="Tomcat 9.0.0.M3 (markt)" rtext="2016-02-05">
   <subsection name="General">
     <changelog>
       <add>
@@ -1898,7 +2056,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M2" rtext="not released">
+<section name="Tomcat 9.0.0.M2 (markt)" rtext="not released">
   <subsection name="Catalina">
     <changelog>
       <scode>
@@ -2275,7 +2433,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 9.0.0.M1" rtext="2015-11-17">
+<section name="Tomcat 9.0.0.M1 (markt)" rtext="2015-11-17">
   <subsection name="General">
     <changelog>
       <add>

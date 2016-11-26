@@ -72,12 +72,6 @@ public class DataSourceRealm extends RealmBase {
 
 
     /**
-     * Descriptive information about this Realm implementation.
-     */
-    protected static final String name = "DataSourceRealm";
-
-
-    /**
      * The column in the user role table that names a role
      */
     protected String roleNameCol = null;
@@ -398,16 +392,6 @@ public class DataSourceRealm extends RealmBase {
             containerLog.error(sm.getString("dataSourceRealm.exception"), e);
         }
         return null;
-    }
-
-    /**
-     * Return a short name for this Realm implementation.
-     */
-    @Override
-    protected String getName() {
-
-        return (name);
-
     }
 
     /**

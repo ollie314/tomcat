@@ -58,6 +58,9 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
     @Override
     public void init() throws Exception {
+        // Upgrade protocols have to be configured first since the endpoint
+        // init (triggered via super.init() below) uses this list to configure
+        // the list of ALPN protocols to advertise
         for (UpgradeProtocol upgradeProtocol : upgradeProtocols) {
             configureUpgradeProtocol(upgradeProtocol);
         }
@@ -322,9 +325,8 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
      */
     private final Map<String,UpgradeProtocol> negotiatedProtocols = new HashMap<>();
     private void configureUpgradeProtocol(UpgradeProtocol upgradeProtocol) {
-        boolean isSSLEnabled = getEndpoint().isSSLEnabled();
         // HTTP Upgrade
-        String httpUpgradeName = upgradeProtocol.getHttpUpgradeName(isSSLEnabled);
+        String httpUpgradeName = upgradeProtocol.getHttpUpgradeName(getEndpoint().isSSLEnabled());
         boolean httpUpgradeConfigured = false;
         if (httpUpgradeName != null && httpUpgradeName.length() > 0) {
             httpUpgradeProtocols.put(httpUpgradeName, upgradeProtocol);
@@ -333,21 +335,22 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
                     getName(), httpUpgradeName));
         }
 
+
         // ALPN
         String alpnName = upgradeProtocol.getAlpnName();
         if (alpnName != null && alpnName.length() > 0) {
-            // ALPN requires SSL
-            if (isSSLEnabled) {
+            if (getEndpoint().isAlpnSupported()) {
                 negotiatedProtocols.put(alpnName, upgradeProtocol);
                 getEndpoint().addNegotiatedProtocol(alpnName);
                 getLog().info(sm.getString("abstractHttp11Protocol.alpnConfigured",
                         getName(), alpnName));
             } else {
                 if (!httpUpgradeConfigured) {
-                    // HTTP Upgrade is not available for this protocol so it
-                    // requires ALPN. It has been configured on a non-secure
-                    // connector where ALPN is not available.
-                    getLog().error(sm.getString("abstractHttp11Protocol.alpnWithNoTls",
+                    // ALPN is not supported by this connector and the upgrade
+                    // protocol implementation does not support standard HTTP
+                    // upgrade so there is no way available to enable support
+                    // for this protocol.
+                    getLog().error(sm.getString("abstractHttp11Protocol.alpnWithNoAlpn",
                             upgradeProtocol.getClass().getName(), alpnName, getName()));
                 }
             }

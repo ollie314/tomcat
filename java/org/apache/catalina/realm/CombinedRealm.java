@@ -51,11 +51,6 @@ public class CombinedRealm extends RealmBase {
     protected final List<Realm> realms = new LinkedList<>();
 
     /**
-     * Descriptive information about this Realm implementation.
-     */
-    protected static final String name = "CombinedRealm";
-
-    /**
      * Add a realm to the list of realms that will be used to authenticate
      * users.
      * @param theRealm realm which should be wrapped by the combined realm
@@ -389,11 +384,6 @@ public class CombinedRealm extends RealmBase {
 
         // Fail in all other cases
         return null;
-    }
-
-    @Override
-    protected String getName() {
-        return name;
     }
 
     @Override

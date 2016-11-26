@@ -166,8 +166,8 @@ public class Tomcat {
     }
 
     /**
-     * Set the port for the default connector. Must
-     * be called before start().
+     * Set the port for the default connector. The default connector will
+     * only be created if getConnector is called.
      * @param port The port number
      */
     public void setPort(int port) {
@@ -326,7 +326,6 @@ public class Tomcat {
      */
     public void init() throws LifecycleException {
         getServer();
-        getConnector();
         server.init();
     }
 
@@ -338,7 +337,6 @@ public class Tomcat {
      */
     public void start() throws LifecycleException {
         getServer();
-        getConnector();
         server.start();
     }
 
@@ -391,23 +389,22 @@ public class Tomcat {
     }
 
     // ------- Extra customization -------
-    // You can tune individual tomcat objects, using internal APIs
+    // You can tune individual Tomcat objects, using internal APIs
 
     /**
-     * Get the default http connector. You can set more
-     * parameters - the port is already initialized.
+     * Get the default HTTP connector that is used by the embedded
+     * Tomcat. It is first configured connector in the service.
+     * If there's no connector defined, it will create and add a default
+     * connector using the port and address specified in this Tomcat
+     * instance, and return it for further customization.
      *
-     * Alternatively, you can construct a Connector and set any params,
-     * then call addConnector(Connector)
-     *
-     * @return A connector object that can be customized
+     * @return The connector object
      */
     public Connector getConnector() {
         Service service = getService();
         if (service.findConnectors().length > 0) {
             return service.findConnectors()[0];
         }
-
         // The same as in standard Tomcat configuration.
         // This creates an APR HTTP connector if AprLifecycleListener has been
         // configured (created) and Tomcat Native library is available.
@@ -418,6 +415,11 @@ public class Tomcat {
         return connector;
     }
 
+    /**
+     * Set the specified connector in the service, if it is not already
+     * present.
+     * @param connector The connector instance to add
+     */
     public void setConnector(Connector connector) {
         Service service = getService();
         boolean found = false;
@@ -561,7 +563,17 @@ public class Tomcat {
      * @see #addWebapp(String, String)
      */
     public Context addWebapp(Host host, String contextPath, String docBase) {
-        return addWebapp(host,  contextPath, docBase, new ContextConfig());
+        LifecycleListener listener = null;
+        try {
+            Class<?> clazz = Class.forName(getHost().getConfigClass());
+            listener = (LifecycleListener) clazz.newInstance();
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+            // Wrap in IAE since we can't easily change the method signature to
+            // to throw the specific checked exceptions
+            throw new IllegalArgumentException(e);
+        }
+
+        return addWebapp(host,  contextPath, docBase, listener);
     }
 
     /**
@@ -573,7 +585,8 @@ public class Tomcat {
      * @return the deployed context
      * @see #addWebapp(String, String)
      */
-    public Context addWebapp(Host host, String contextPath, String docBase, ContextConfig config) {
+    public Context addWebapp(Host host, String contextPath, String docBase,
+            LifecycleListener config) {
 
         silence(host, contextPath);
 
@@ -585,8 +598,10 @@ public class Tomcat {
 
         ctx.addLifecycleListener(config);
 
-        // prevent it from looking ( if it finds one - it'll have dup error )
-        config.setDefaultWebXml(noDefaultWebXmlPath());
+        if (config instanceof ContextConfig) {
+            // prevent it from looking ( if it finds one - it'll have dup error )
+            ((ContextConfig) config).setDefaultWebXml(noDefaultWebXmlPath());
+        }
 
         if (host == null) {
             getHost().addChild(ctx);
@@ -628,33 +643,32 @@ public class Tomcat {
      * @return a realm instance
      */
     protected Realm createDefaultRealm() {
-        return new RealmBase() {
-            @Override
-            protected String getName() {
-                return "Simple";
-            }
-
-            @Override
-            protected String getPassword(String username) {
-                return userPass.get(username);
-            }
-
-            @Override
-            protected Principal getPrincipal(String username) {
-                Principal p = userPrincipals.get(username);
-                if (p == null) {
-                    String pass = userPass.get(username);
-                    if (pass != null) {
-                        p = new GenericPrincipal(username, pass,
-                                userRoles.get(username));
-                        userPrincipals.put(username, p);
-                    }
-                }
-                return p;
-            }
-
-        };
+        return new SimpleRealm();
     }
+
+
+    private class SimpleRealm extends RealmBase {
+
+        @Override
+        protected String getPassword(String username) {
+            return userPass.get(username);
+        }
+
+        @Override
+        protected Principal getPrincipal(String username) {
+            Principal p = userPrincipals.get(username);
+            if (p == null) {
+                String pass = userPass.get(username);
+                if (pass != null) {
+                    p = new GenericPrincipal(username, pass,
+                            userRoles.get(username));
+                    userPrincipals.put(username, p);
+                }
+            }
+            return p;
+        }
+    }
+
 
     protected void initBaseDir() {
         String catalinaHome = System.getProperty(Globals.CATALINA_HOME_PROP);

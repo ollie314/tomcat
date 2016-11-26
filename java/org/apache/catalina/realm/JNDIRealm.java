@@ -235,12 +235,6 @@ public class JNDIRealm extends RealmBase {
 
 
     /**
-     * Descriptive information about this Realm implementation.
-     */
-    protected static final String name = "JNDIRealm";
-
-
-    /**
      * The protocol that will be used in the communication with the
      * directory server.
      */
@@ -2163,17 +2157,6 @@ public class JNDIRealm extends RealmBase {
             containerLog.error(sm.getString("jndiRealm.close"), e);
         }
         this.context = null;
-
-    }
-
-
-    /**
-     * @return a short name for this Realm implementation.
-     */
-    @Override
-    protected String getName() {
-
-        return name;
 
     }
 
